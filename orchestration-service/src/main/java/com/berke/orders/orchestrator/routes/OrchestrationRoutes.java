@@ -39,8 +39,8 @@ public class OrchestrationRoutes extends RouteBuilder {
                 });
 
         from("direct:processProductOrder")
-                .routeId("crm-to-subscriber-product-route")
-                .process(exchange -> {
+            .routeId("crm-to-subscriber-product-route")
+            .process(exchange -> {
                     var env = exchange.getIn().getBody(OrchestratorService.ProductOrderEnvelope.class);
                     var req = env.request();
                     Long orderId = env.orderId();
@@ -78,14 +78,16 @@ public class OrchestrationRoutes extends RouteBuilder {
                     log.log(orderId, "Request to Subscriber", "START", "SUCCESS", command, null, null);
                     exchange.getIn().setBody(command);
                 })
-                .marshal().json()
-                .setHeader("contentType", constant("application/json"))
-                .to("spring-rabbitmq:?routingKey=subscriber.product.command.queue&autoDeclare=false");
+            .marshal()
+            .json()
+            .setHeader("contentType", constant("application/json"))
+            .to("spring-rabbitmq:?routingKey=subscriber.product.command.queue&autoDeclare=false");
 
         from("spring-rabbitmq:?queues=subscriber.product.result.queue&autoDeclare=false")
-                .routeId("subscriber-product-result-route")
-                .unmarshal().json(ProductResult.class)
-                .process(exchange -> {
+            .routeId("subscriber-product-result-route")
+            .unmarshal()
+            .json(ProductResult.class)
+            .process(exchange -> {
                     var result = exchange.getIn().getBody(ProductResult.class);
                     Long orderId = result.orderId();
 
@@ -118,8 +120,8 @@ public class OrchestrationRoutes extends RouteBuilder {
                 });
 
         from("direct:processCustomerRequest")
-                .routeId("crm-to-subscriber-customer-route")
-                .process(exchange -> {
+            .routeId("crm-to-subscriber-customer-route")
+            .process(exchange -> {
                     var env = exchange.getIn().getBody(OrchestratorService.CustomerEnvelope.class);
                     var req = env.request();
                     Long requestId = env.requestId();
@@ -129,14 +131,16 @@ public class OrchestrationRoutes extends RouteBuilder {
                     log.log(requestId, "Request to Subscriber", "START", "SUCCESS", command, null, null);
                     exchange.getIn().setBody(command);
                 })
-                .marshal().json()
-                .setHeader("contentType", constant("application/json"))
-                .to("spring-rabbitmq:?routingKey=subscriber.customer.command.queue&autoDeclare=false");
+            .marshal()
+            .json()
+            .setHeader("contentType", constant("application/json"))
+            .to("spring-rabbitmq:?routingKey=subscriber.customer.command.queue&autoDeclare=false");
 
         from("spring-rabbitmq:?queues=subscriber.customer.result.queue&autoDeclare=false")
-                .routeId("subscriber-customer-result-route")
-                .unmarshal().json(CustomerResult.class)
-                .process(exchange -> {
+            .routeId("subscriber-customer-result-route")
+            .unmarshal()
+            .json(CustomerResult.class)
+            .process(exchange -> {
                     var result = exchange.getIn().getBody(CustomerResult.class);
                     Long requestId = result.requestId();
 

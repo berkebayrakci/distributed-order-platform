@@ -1,1 +1,28 @@
-package com.berke.orders.subscriber.model;import jakarta.persistence.*;import lombok.*;import java.time.*;@Entity @Table(name="customer") @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder public class Customer{ @Id private String customerId; private String firstName; private String lastName; private String status; private LocalDateTime createdAt; @PrePersist void pre(){ if(createdAt==null) createdAt=LocalDateTime.now(); if(status==null) status="ACTIVE"; }}
+package com.berke.orders.subscriber.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.*;
+
+@Entity
+@Table(name = "customer")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Customer {
+    @Id
+    private String customerId;
+    private String firstName;
+    private String lastName;
+    private String status;
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    void pre() {
+        if (createdAt == null) createdAt = LocalDateTime.now();
+        if (status == null) status = "ACTIVE";
+    }
+}

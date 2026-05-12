@@ -1,1 +1,13 @@
-package com.berke.orders.orchestrator.repo;import com.berke.orders.orchestrator.model.ProductOrder;import org.springframework.data.jpa.repository.Query;import org.springframework.data.repository.Repository;public interface SequenceRepository extends Repository<ProductOrder,Long>{ @Query(value="select nextval('orchestrator.operation_id_seq')",nativeQuery=true) Long nextOperationId(); @Query(value="select nextval('orchestrator.trace_step_seq')",nativeQuery=true) Long nextStep(); }
+package com.berke.orders.orchestrator.repo;
+
+import com.berke.orders.orchestrator.model.ProductOrder;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+
+public interface SequenceRepository extends Repository<ProductOrder, Long> {
+    @Query(value = "select nextval('orchestrator.operation_id_seq')", nativeQuery = true)
+    Long nextOperationId();
+
+    @Query(value = "select nextval('orchestrator.trace_step_seq')", nativeQuery = true)
+    Long nextStep();
+}

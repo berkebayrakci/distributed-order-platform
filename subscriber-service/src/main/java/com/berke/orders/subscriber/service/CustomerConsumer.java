@@ -1,5 +1,34 @@
-package com.berke.orders.subscriber.service;import com.berke.orders.subscriber.dto.SubscriberDtos.*;import com.berke.orders.subscriber.model.Customer;import com.berke.orders.subscriber.repo.CustomerRepository;import lombok.RequiredArgsConstructor;import lombok.extern.slf4j.Slf4j;import org.springframework.amqp.rabbit.annotation.RabbitListener;import org.springframework.amqp.rabbit.core.RabbitTemplate;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;
-@Service @RequiredArgsConstructor @Slf4j
-public class CustomerConsumer{ private final CustomerRepository repo; private final RabbitTemplate rabbit;
- @RabbitListener(queues="subscriber.customer.command.queue") @Transactional public void consume(CustomerCommand cmd){ log.info("Subscriber service received customer request {}",cmd.requestId()); try{ if(repo.existsById(cmd.customerId())) throw new IllegalArgumentException("Customer already exists: "+cmd.customerId()); repo.save(Customer.builder().customerId(cmd.customerId()).firstName(cmd.firstName()).lastName(cmd.lastName()).status("ACTIVE").build()); rabbit.convertAndSend("subscriber.customer.result.queue",new CustomerResult(cmd.requestId(),cmd.customerId(),true,null)); }catch(Exception e){ log.error("Subscriber customer request failed {}",cmd.requestId(),e); rabbit.convertAndSend("subscriber.customer.result.queue",new CustomerResult(cmd.requestId(),cmd.customerId(),false,e.getMessage())); }}
+package com.berke.orders.subscriber.service;
+
+import com.berke.orders.subscriber.dto.SubscriberDtos.*;
+import com.berke.orders.subscriber.model.Customer;
+import com.berke.orders.subscriber.repo.CustomerRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class CustomerConsumer {
+    private final CustomerRepository repo;
+    private final RabbitTemplate rabbit;
+
+    @RabbitListener(queues = "subscriber.customer.command.queue")
+    @Transactional
+    public void consume(CustomerCommand cmd) {
+        log.info("Subscriber service received customer request {}", cmd.requestId());
+        try {
+            if (repo.existsById(cmd.customerId()))
+                throw new IllegalArgumentException("Customer already exists: " + cmd.customerId());
+            repo.save(Customer.builder().customerId(cmd.customerId()).firstName(cmd.firstName()).lastName(cmd.lastName()).status("ACTIVE").build());
+            rabbit.convertAndSend("subscriber.customer.result.queue", new CustomerResult(cmd.requestId(), cmd.customerId(), true, null));
+        } catch (Exception e) {
+            log.error("Subscriber customer request failed {}", cmd.requestId(), e);
+            rabbit.convertAndSend("subscriber.customer.result.queue", new CustomerResult(cmd.requestId(), cmd.customerId(), false, e.getMessage()));
+        }
+    }
 }

@@ -35,5 +35,6 @@ public class SubscriberCustomerController {
             String lastName,
             String status,
             LocalDateTime createdAt
-    ) {}
+    ) {
+    }
 }

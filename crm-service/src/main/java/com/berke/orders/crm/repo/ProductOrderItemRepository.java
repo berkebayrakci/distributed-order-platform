@@ -1,1 +1,7 @@
-package com.berke.orders.crm.repo;import com.berke.orders.crm.model.ProductOrderItem;import org.springframework.data.jpa.repository.JpaRepository;public interface ProductOrderItemRepository extends JpaRepository<ProductOrderItem,Long>{}
+package com.berke.orders.crm.repo;
+
+import com.berke.orders.crm.model.ProductOrderItem;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ProductOrderItemRepository extends JpaRepository<ProductOrderItem, Long> {
+}

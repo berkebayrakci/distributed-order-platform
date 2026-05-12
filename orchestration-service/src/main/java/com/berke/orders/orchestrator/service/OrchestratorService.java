@@ -111,6 +111,9 @@ public class OrchestratorService {
         );
     }
 
-    public record ProductOrderEnvelope(Long orderId, CreateProductOrderRequest request) {}
-    public record CustomerEnvelope(Long requestId, CreateCustomerRequest request) {}
+    public record ProductOrderEnvelope(Long orderId, CreateProductOrderRequest request) {
+    }
+
+    public record CustomerEnvelope(Long requestId, CreateCustomerRequest request) {
+    }
 }

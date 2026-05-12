@@ -1,1 +1,38 @@
-package com.berke.orders.orchestrator.model;import jakarta.persistence.*;import lombok.*;import java.time.*;@Entity @Table(name="customer_request") @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class CustomerRequestEntity{ @Id Long requestId; String customerId; String firstName; String lastName; String crmCallbackUrl; String status; @Column(columnDefinition="text") String errorMessage; LocalDateTime createdAt; LocalDateTime updatedAt; @PrePersist void pre(){createdAt=LocalDateTime.now();updatedAt=createdAt;} @PreUpdate void upd(){updatedAt=LocalDateTime.now();} }
+package com.berke.orders.orchestrator.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.*;
+
+@Entity
+@Table(name = "customer_request")
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CustomerRequestEntity {
+    @Id
+    Long requestId;
+    String customerId;
+    String firstName;
+    String lastName;
+    String crmCallbackUrl;
+    String status;
+    @Column(columnDefinition = "text")
+    String errorMessage;
+    LocalDateTime createdAt;
+    LocalDateTime updatedAt;
+
+    @PrePersist
+    void pre() {
+        createdAt = LocalDateTime.now();
+        updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    void upd() {
+        updatedAt = LocalDateTime.now();
+    }
+}
