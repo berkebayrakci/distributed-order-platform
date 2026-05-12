@@ -1,0 +1,1 @@
+package com.berke.orders.subscriber.repo;import com.berke.orders.subscriber.model.Customer;import org.springframework.data.jpa.repository.JpaRepository;public interface CustomerRepository extends JpaRepository<Customer,String>{}

@@ -1,0 +1,28 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: catalog-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/order_system?currentSchema=catalog
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+logging:
+  level:
+    com.berke.orders: DEBUG
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

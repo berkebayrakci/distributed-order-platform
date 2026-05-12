@@ -1,0 +1,1 @@
+package com.berke.orders.orchestrator.repo;import com.berke.orders.orchestrator.model.InterfaceLog;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;public interface InterfaceLogRepository extends JpaRepository<InterfaceLog,Long>{ List<InterfaceLog> findByOperationIdOrderByStepNoAsc(Long operationId); }

@@ -1,0 +1,1 @@
+package com.berke.orders.orchestrator.repo;import com.berke.orders.orchestrator.model.ProductOrder;import org.springframework.data.jpa.repository.JpaRepository;public interface ProductOrderRepository extends JpaRepository<ProductOrder,Long>{}

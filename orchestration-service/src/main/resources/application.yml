@@ -1,0 +1,28 @@
+server:
+  port: 8084
+spring:
+  application:
+    name: orchestration-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/order_system?currentSchema=orchestrator
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+logging:
+  level:
+    com.berke.orders: DEBUG
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
