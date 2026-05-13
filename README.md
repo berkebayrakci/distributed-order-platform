@@ -1,202 +1,268 @@
 # Distributed Order Platform
 
-Enterprise-style distributed order orchestration platform built with Spring Boot, RabbitMQ, PostgreSQL, and event-driven microservice architecture.
+Enterprise-style distributed order orchestration platform built with Spring Boot, RabbitMQ, PostgreSQL, Apache Camel, Docker and React.
 
-This project simulates a telecom-style middleware/order management environment where customer and product operations are processed asynchronously across multiple services.
+This project simulates real-world enterprise integration architectures where customer orders flow through multiple distributed systems asynchronously.
+
+Instead of a simple CRUD application, the platform focuses on:
+
+- Distributed order orchestration
+- Asynchronous messaging
+- Runtime ownership mapping
+- Event-driven architecture
+- Failure handling and retries
+- Service-to-service communication
+- Operational tracing and observability
+
+---
+
+# Business Scenario
+
+In large enterprise environments, a customer order rarely stays inside a single system.
+
+For example:
+
+- CRM receives the customer request
+- Orchestrator routes the order
+- Catalog maps products between systems
+- Subscriber service provisions the customer
+- Multiple downstream systems process the request asynchronously
+
+This project simulates that architecture.
+
+The system processes distributed customer/product orders while maintaining traceability and orchestration between services.
 
 ---
 
 # Architecture
 
 ```text
-CRM
-  ↓
-Orchestrator Service
-  ↓
-RabbitMQ
-  ↓
-Subscriber Service
-  ↓
-Catalog Service
+                +------------------+
+                |     CRM UI       |
+                |      React       |
+                +---------+--------+
+                          |
+                          v
+                +------------------+
+                |   CRM Service    |
+                |  Spring Boot     |
+                +---------+--------+
+                          |
+                          v
+                +------------------+
+                |   RabbitMQ       |
+                |   Event Queue    |
+                +---------+--------+
+                          |
+                          v
+                +------------------+
+                |  Orchestrator    |
+                | Apache Camel ESB |
+                +----+--------+----+
+                     |        |
+                     |        |
+          +----------+        +-----------+
+          |                               |
+          v                               v
+
++------------------+          +------------------+
+| Catalog Service  |          | Subscriber Svc   |
+| Product Mapping  |          | Provisioning     |
++------------------+          +------------------+
+
 ```
-
-The platform demonstrates:
-
-- Distributed order orchestration
-- Event-driven communication
-- Runtime product ownership tracking
-- Product code translation
-- Async callbacks
-- Trace/correlation logging
-- Enterprise-style operational flows
 
 ---
 
-# Services
+# Microservices
 
 ## CRM Service
 
 Responsible for:
-- receiving customer requests
-- receiving product order requests
-- exposing operation status APIs
-- callback handling
 
-Default port:
+- Receiving customer orders
+- Creating order requests
+- Publishing events to RabbitMQ
+- Providing REST APIs for UI interactions
 
-```text
-8081
-```
+Tech:
+- Spring Boot
+- PostgreSQL
+- RabbitMQ
 
 ---
 
 ## Orchestrator Service
 
-Acts as middleware / orchestration layer.
+Acts as the enterprise orchestration layer.
 
 Responsible for:
-- operation lifecycle management
-- routing requests
-- RabbitMQ messaging
-- distributed logging
-- trace event generation
-- failure handling
-- force-complete operations
 
-Default port:
+- Consuming order events
+- Routing flows between services
+- Handling orchestration logic
+- Managing async communication
+- Providing operation tracing
 
-```text
-8084
-```
-
----
-
-## Subscriber Service
-
-Represents downstream provisioning/subscriber domain.
-
-Responsible for:
-- customer creation
-- subscriber item creation
-- target item reference generation
-- runtime ownership state
-
-Default port:
-
-```text
-8083
-```
+Tech:
+- Apache Camel
+- Spring Boot
+- RabbitMQ
 
 ---
 
 ## Catalog Service
 
 Responsible for:
-- product code translation
-- runtime ownership mapping
-- universal product key generation
 
-Default port:
+- Product translation
+- Runtime ownership mapping
+- Universal product key generation
 
-```text
-8082
-```
-
----
-
-# Database Design
-
-## Static Translation Table
-
-```text
-catalog.product_code_mapping
-```
-
-Used for:
-
-```text
-source_product_code → target_product_code
-```
+The service stores relationships between source and target product definitions across distributed systems.
 
 Example:
+- CRM product code
+- Downstream system product code
+- Shared universal product identity
 
-| source_product_code | target_product_code |
-|---|---|
-| 1893 | 100074239 |
-| 41001 | 90041001 |
+Tech:
+- Spring Boot
+- PostgreSQL
 
 ---
 
-## Runtime Ownership Mapping
+## Subscriber Service
 
-```text
-catalog.order_product_instance_mapping
-```
+Responsible for:
 
-Tracks customer-owned runtime items.
+- Customer provisioning simulation
+- Order completion handling
+- Async response generation
 
-Columns:
+Tech:
+- Spring Boot
+- PostgreSQL
 
-| column |
-|---|
-| universal_product_key |
-| source_product_code |
-| target_product_code |
-| product_type |
-| source_item_ref |
-| target_item_ref |
-| created_at |
+---
 
-`universal_product_key` is generated once per successful product order and shared across all items within the same order.
+## CRM UI
+
+Frontend application for interacting with the platform.
+
+Features:
+- Customer creation
+- Order submission
+- Order monitoring
+- Service interaction visualization
+
+Tech:
+- React
+- TypeScript
+
+---
+
+# Key Enterprise Concepts Demonstrated
+
+## Event-Driven Architecture
+
+Services communicate asynchronously using RabbitMQ instead of direct synchronous calls.
+
+Benefits:
+- Loose coupling
+- Better scalability
+- Retry capabilities
+- Failure isolation
+
+---
+
+## Distributed Order Orchestration
+
+The orchestrator coordinates flows between multiple systems similar to telecom ESB platforms.
+
+---
+
+## Runtime Mapping
+
+The platform dynamically stores ownership relationships between distributed product definitions.
+
+This simulates real enterprise integration challenges where multiple systems use different identifiers.
+
+---
+
+## Traceability
+
+Operations can be tracked across services to understand:
+- Request flow
+- Service interactions
+- Processing stages
+- Failures and retries
+
+---
+
+## Failure Isolation
+
+A downstream service failure does not immediately break the entire platform.
+
+The architecture is designed around asynchronous processing and decoupled communication.
 
 ---
 
 # Technologies
 
+## Backend
 - Java 21
 - Spring Boot
 - Apache Camel
 - RabbitMQ
 - PostgreSQL
 - Gradle
-- Docker
+
+## Frontend
 - React
-- REST APIs
+- TypeScript
+
+## Infrastructure
+- Docker
+- Docker Compose
 
 ---
 
-# Features
-
-- Async order processing
-- Event-driven architecture
-- RabbitMQ queues
-- Distributed operation tracking
-- Interface logs
-- Trace event logs
-- Runtime ownership mapping
-- Product translation layer
-- Force-complete operations
-- Failure propagation
-- Customer existence validation
-- Multi-service architecture
-
----
-
-# RabbitMQ Queues
+# Example Flow
 
 ```text
-subscriber.product.command.queue
-subscriber.product.result.queue
+1. Customer submits order from CRM UI
 
-subscriber.customer.command.queue
-subscriber.customer.result.queue
+2. CRM Service publishes order event
+
+3. RabbitMQ distributes event
+
+4. Orchestrator consumes event
+
+5. Catalog Service maps product definitions
+
+6. Subscriber Service provisions customer
+
+7. Async response generated
+
+8. Final order state updated
 ```
 
 ---
 
 # Running the Project
 
-## Start infrastructure
+## Prerequisites
+
+- Java 21
+- Docker
+- Docker Compose
+- Node.js
+- Gradle
+
+---
+
+## Start Infrastructure
 
 ```bash
 docker compose up -d
@@ -204,372 +270,57 @@ docker compose up -d
 
 ---
 
-## Load database
+## Start Backend Services
 
-```bash
-docker exec -i order-postgres psql -U postgres < database/01_create_database.sql
-
-docker exec -i order-postgres psql -U postgres -d order_system < database/02_schemas_tables.sql
-
-docker exec -i order-postgres psql -U postgres -d order_system < database/03_seed_data.sql
-```
-
----
-
-## Start services
-
-### Catalog Service
-
-```bash
-cd catalog-service
-gradle clean bootRun
-```
-
-### Subscriber Service
-
-```bash
-cd subscriber-service
-gradle clean bootRun
-```
-
-### Orchestrator Service
-
-```bash
-cd orchestration-service
-gradle clean bootRun
-```
-
-### CRM Service
+Example:
 
 ```bash
 cd crm-service
-gradle clean bootRun
+./gradlew bootRun
 ```
+
+Repeat for:
+- orchestrator-service
+- catalog-service
+- subscriber-service
 
 ---
 
-# Example API Requests
-
-## Create Customer
+## Start Frontend
 
 ```bash
-curl -X POST http://localhost:8081/api/customers \
--H "Content-Type: application/json" \
--d '{
-  "customerId":"CUST9001",
-  "firstName":"Berke",
-  "lastName":"Bayrakci"
-}'
+cd crm-ui
+npm install
+npm run dev
 ```
 
----
-
-## Create Product Order
-
-```bash
-curl -X POST http://localhost:8081/api/orders \
--H "Content-Type: application/json" \
--d '{
-  "customerId":"CUST9001",
-  "products":[
-    {
-      "sourceProductCode":"1893",
-      "sourceItemRef":"SRC-9001",
-      "productType":"TARIFF"
-    },
-    {
-      "sourceProductCode":"41001",
-      "sourceItemRef":"SRC-9002",
-      "productType":"ADDON"
-    }
-  ]
-}'
-```
-
----
-
-# Operation Tracking
-
-## Check operation status
-
-```bash
-curl http://localhost:8081/api/operations/1111
-```
-
----
-
-## Check orchestrator logs
-
-```bash
-curl http://localhost:8084/api/orchestrator/operations/1111/logs
-```
-
----
-
-## Check trace events
-
-```bash
-curl http://localhost:8084/api/orchestrator/operations/1111/trace-events
-```
-# SQL Examples
-
-## View CRM Product Orders
-
-```sql
-SELECT *
-FROM crm.product_order
-ORDER BY order_id DESC;
-```
-
----
-
-## View CRM Product Order Items
-
-```sql
-SELECT *
-FROM crm.product_order_item
-ORDER BY id DESC;
-```
-
----
-
-## View CRM Customer Requests
-
-```sql
-SELECT *
-FROM crm.customer_request
-ORDER BY id DESC;
-```
-
----
-
-## View Product Translation Table
-
-```sql
-SELECT *
-FROM catalog.product_code_mapping
-ORDER BY source_product_code;
-```
-
----
-
-## View Runtime Product Ownership Mapping
-
-```sql
-SELECT *
-FROM catalog.order_product_instance_mapping
-ORDER BY created_at DESC;
-```
-
----
-
-## View Subscriber Customers
-
-```sql
-SELECT *
-FROM subscriber.customer
-ORDER BY created_at DESC;
-```
-
----
-
-## View Subscriber Runtime Products
-
-```sql
-SELECT *
-FROM subscriber.customer_product
-ORDER BY id DESC;
-```
-
----
-
-## View Orchestrator Product Orders
-
-```sql
-SELECT *
-FROM orchestrator.product_order
-ORDER BY order_id DESC;
-```
-
----
-
-## View Operation Trace Events
-
-```sql
-SELECT *
-FROM orchestrator.operation_trace_event
-ORDER BY id DESC;
-```
-
----
-
-## View Interface Logs
-
-```sql
-SELECT *
-FROM orchestrator.interface_log
-ORDER BY id DESC;
-```
-
----
-
-# Order-Based Queries
-
-## View One Product Order
-
-```sql
-SELECT *
-FROM crm.product_order
-WHERE order_id = 1111;
-```
-
----
-
-## View Product Order Items
-
-```sql
-SELECT *
-FROM crm.product_order_item
-WHERE order_id = 1111
-ORDER BY id;
-```
-
----
-
-## View Orchestrator Logs For One Operation
-
-```sql
-SELECT *
-FROM orchestrator.interface_log
-WHERE operation_id = 1111
-ORDER BY step_no;
-```
-
----
-
-## View Trace Events For One Operation
-
-```sql
-SELECT *
-FROM orchestrator.operation_trace_event
-WHERE operation_id = 1111
-ORDER BY step_no;
-```
-
----
-
-## View Runtime Product Mapping For One Order
-
-```sql
-SELECT *
-FROM catalog.order_product_instance_mapping
-WHERE source_item_ref IN (
-    SELECT source_item_ref
-    FROM crm.product_order_item
-    WHERE order_id = 1111
-)
-ORDER BY created_at;
-```
-
----
-
-## View Subscriber Runtime Products For One Order
-
-```sql
-SELECT sp.*
-FROM subscriber.customer_product sp
-JOIN catalog.order_product_instance_mapping cm
-  ON cm.target_item_ref = sp.target_item_ref
-WHERE cm.source_item_ref IN (
-    SELECT source_item_ref
-    FROM crm.product_order_item
-    WHERE order_id = 1111
-)
-ORDER BY sp.id;
-```
-
----
-
-# Full End-To-End Tracking Query
-
-```sql
-SELECT
-    po.order_id,
-    po.customer_id,
-    po.status AS orchestrator_status,
-
-    crm_po.status AS crm_status,
-
-    ote.step_no,
-    ote.trace_event_id,
-    ote.description,
-
-    il.interface_name,
-    il.direction,
-    il.status AS interface_status,
-    il.request_payload,
-    il.response_payload,
-    il.error_message,
-    il.created_at AS interface_created_at,
-
-    poi.source_product_code,
-    pcm.target_product_code AS translated_target_product_code,
-    poi.product_type,
-    poi.source_item_ref,
-
-    cm.universal_product_key,
-    cm.target_item_ref,
-
-    sp.active AS subscriber_item_active,
-    sp.created_at AS subscriber_item_created_at
-
-FROM orchestrator.product_order po
-
-LEFT JOIN crm.product_order crm_po
-    ON crm_po.order_id = po.order_id
-
-LEFT JOIN crm.product_order_item poi
-    ON poi.order_id = po.order_id
-
-LEFT JOIN catalog.product_code_mapping pcm
-    ON pcm.source_product_code = poi.source_product_code
-
-LEFT JOIN catalog.order_product_instance_mapping cm
-    ON cm.source_item_ref = poi.source_item_ref
-
-LEFT JOIN subscriber.customer_product sp
-    ON sp.target_item_ref = cm.target_item_ref
-
-LEFT JOIN orchestrator.operation_trace_event ote
-    ON ote.operation_id = po.order_id
-
-LEFT JOIN orchestrator.interface_log il
-    ON il.operation_id = po.order_id
-   AND il.trace_event_id = ote.trace_event_id
-
-WHERE po.order_id = 1111
-
-ORDER BY ote.step_no, poi.id;
-```
 ---
 
 # Future Improvements
 
-- Retry policies
-- Dead-letter queues
-- OpenTelemetry tracing
-- Prometheus/Grafana monitoring
+Planned enterprise features:
+
+- JWT authentication
 - Kubernetes deployment
-- CI/CD pipeline
-- Flyway migrations
-- Distributed transaction patterns
-- Idempotency handling
-- Swagger/OpenAPI documentation
-- Integration tests
-- Authentication/authorization
+- Retry queues / DLQ
+- Prometheus + Grafana monitoring
+- Distributed tracing
+- Circuit breakers
+- CI/CD pipelines
+- OpenShift deployment
+- Role-based authorization
+- Saga orchestration patterns
 
 ---
 
-# Project Goal
+# Why This Project Exists
 
-The goal of this project is to simulate realistic enterprise middleware patterns used in distributed order management and provisioning systems. It focuses on orchestration, async communication, operational traceability, and runtime ownership tracking rather than simple CRUD operations.
+This project was built to simulate real enterprise middleware and distributed system environments instead of basic CRUD applications.
+
+It focuses on operational thinking, asynchronous architecture, orchestration and enterprise integration patterns commonly used in large-scale backend systems.
+
+---
+
+# Author
+
+Berke Bayrakçı
