@@ -8,6 +8,7 @@ import com.berke.orders.catalog.repo.ProductCodeMappingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
+import jakarta.validation.Valid;
 
 import java.util.HashSet;
 
@@ -19,7 +20,7 @@ public class CatalogController {
     private final InstanceMappingRepository instanceRepo;
 
     @PostMapping("/lookup")
-    public ProductLookupResponse lookup(@RequestBody ProductLookupRequest req) {
+    public ProductLookupResponse lookup(@Valid @RequestBody ProductLookupRequest req) {
         var uniqueCodes = new HashSet<>(req.sourceProductCodes());
         var found = catalogRepo.findBySourceProductCodeIn(req.sourceProductCodes());
 
@@ -29,7 +30,21 @@ public class CatalogController {
 
         return new ProductLookupResponse(
                 found.stream()
-                        .map(p -> new ProductMapItem(p.getSourceProductCode(), p.getTargetProductCode()))
+                        .map(p -> {
+                            p.validateConfiguration();
+                            return new ProductMapItem(
+                                    p.getSourceProductCode(),
+                                    p.getTargetProductCode(),
+                                    p.getProductType().name(),
+                                    p.getProductVersion(),
+                                    p.getValidityType().name(),
+                                    p.getValidityAmount(),
+                                    p.getValidityUnit() == null ? null : p.getValidityUnit().name(),
+                                    p.isRenewable(),
+                                    p.isStackable(),
+                                    p.isRequiresPrimaryTariff()
+                            );
+                        })
                         .toList()
         );
     }

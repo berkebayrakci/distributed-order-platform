@@ -3,6 +3,11 @@ package com.berke.orders.catalog.web;
 import com.berke.orders.catalog.dto.CatalogDtos.RuntimeMappingInsertItem;
 import com.berke.orders.catalog.dto.CatalogDtos.RuntimeMappingInsertRequest;
 import com.berke.orders.catalog.model.OrderProductInstanceMapping;
+import com.berke.orders.catalog.model.ProductCodeMapping;
+import com.berke.orders.catalog.model.ProductType;
+import com.berke.orders.catalog.model.ValidityType;
+import com.berke.orders.catalog.model.ValidityUnit;
+import com.berke.orders.catalog.dto.CatalogDtos.ProductLookupRequest;
 import com.berke.orders.catalog.repo.InstanceMappingRepository;
 import com.berke.orders.catalog.repo.ProductCodeMappingRepository;
 import org.junit.jupiter.api.Test;
@@ -53,5 +58,60 @@ class CatalogControllerTest {
         ));
 
         assertThrows(IllegalArgumentException.class, () -> controller.insertRuntimeMapping(request));
+    }
+
+    @Test
+    void lookupReturnsSeedShapedTariffAndAddonValidityConfiguration() {
+        var tariff = ProductCodeMapping.builder()
+                .sourceProductCode("1893").targetProductCode("100074239")
+                .productType(ProductType.TARIFF).productVersion(1)
+                .validityType(ValidityType.FIXED_DURATION).validityAmount(1).validityUnit(ValidityUnit.YEARS)
+                .renewable(false).stackable(false).requiresPrimaryTariff(false).build();
+        var addon = ProductCodeMapping.builder()
+                .sourceProductCode("41001").targetProductCode("90041001")
+                .productType(ProductType.ADDON).productVersion(1)
+                .validityType(ValidityType.FIXED_DURATION).validityAmount(3).validityUnit(ValidityUnit.MONTHS)
+                .renewable(false).stackable(true).requiresPrimaryTariff(true).build();
+        when(catalogRepo.findBySourceProductCodeIn(List.of("1893", "41001")))
+                .thenReturn(List.of(tariff, addon));
+
+        var response = controller.lookup(new ProductLookupRequest(List.of("1893", "41001")));
+
+        var tariffResponse = response.products().stream()
+                .filter(p -> p.sourceProductCode().equals("1893")).findFirst().orElseThrow();
+        assertEquals("TARIFF", tariffResponse.productType());
+        assertEquals("FIXED_DURATION", tariffResponse.validityType());
+        assertEquals(1, tariffResponse.validityAmount());
+        assertEquals("YEARS", tariffResponse.validityUnit());
+
+        var addonResponse = response.products().stream()
+                .filter(p -> p.sourceProductCode().equals("41001")).findFirst().orElseThrow();
+        assertEquals("ADDON", addonResponse.productType());
+        assertEquals(3, addonResponse.validityAmount());
+        assertEquals("MONTHS", addonResponse.validityUnit());
+        assertTrue(addonResponse.stackable());
+        assertTrue(addonResponse.requiresPrimaryTariff());
+    }
+
+    @Test
+    void fixedDurationRejectsMissingOrNonPositiveDuration() {
+        var invalid = ProductCodeMapping.builder()
+                .sourceProductCode("BAD").targetProductCode("BAD-TARGET")
+                .productType(ProductType.ADDON).productVersion(1)
+                .validityType(ValidityType.FIXED_DURATION).validityAmount(0).validityUnit(ValidityUnit.MONTHS)
+                .build();
+
+        assertThrows(IllegalStateException.class, invalid::validateConfiguration);
+    }
+
+    @Test
+    void nonExpiringRejectsDurationFields() {
+        var invalid = ProductCodeMapping.builder()
+                .sourceProductCode("BAD").targetProductCode("BAD-TARGET")
+                .productType(ProductType.ADDON).productVersion(1)
+                .validityType(ValidityType.NON_EXPIRING).validityAmount(3).validityUnit(ValidityUnit.MONTHS)
+                .build();
+
+        assertThrows(IllegalStateException.class, invalid::validateConfiguration);
     }
 }
