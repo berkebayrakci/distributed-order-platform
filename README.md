@@ -239,7 +239,9 @@ The architecture is designed around asynchronous processing and decoupled commun
 
 8. Orchestrator atomically stores the terminal order and a durable callback outbox record
 
-9. The callback worker delivers the authenticated CRM callback with bounded retries
+9. The callback worker delivers the authenticated CRM callback with a stable event ID and bounded retries
+
+10. CRM transactionally records the event ID and applies the state transition; duplicate callbacks return success
 ```
 
 ---

@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/customers")
 @RequiredArgsConstructor
@@ -29,7 +31,10 @@ public class CustomerController {
     }
 
     @PostMapping("/callback")
-    public void callback(@Valid @RequestBody CustomerCallback request) {
-        service.callback(request);
+    public void callback(
+            @RequestHeader("X-Callback-Event-Id") UUID eventId,
+            @Valid @RequestBody CustomerCallback request
+    ) {
+        service.callback(eventId, request);
     }
 }

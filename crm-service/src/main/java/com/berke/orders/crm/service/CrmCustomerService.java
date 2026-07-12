@@ -4,6 +4,7 @@ import com.berke.orders.crm.dto.CrmDtos.*;
 import com.berke.orders.crm.config.IntegrationProperties;
 import com.berke.orders.crm.model.CustomerRequestEntity;
 import com.berke.orders.crm.repo.CustomerRequestRepository;
+import com.berke.orders.crm.repo.ProcessedCallbackEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,10 +14,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class CrmCustomerService {
     private final CustomerRequestRepository repo;
+    private final ProcessedCallbackEventRepository processedCallbackRepository;
     private final IntegrationProperties integrations;
     private final RestClient restClient = RestClient.builder().build();
 
@@ -47,7 +51,9 @@ public class CrmCustomerService {
     }
 
     @Transactional
-    public void callback(CustomerCallback cb) {
+    public void callback(UUID eventId, CustomerCallback cb) {
+        if (isDuplicate(eventId, "CUSTOMER_CREATE", cb.requestId())) return;
+
         var r = repo.findById(cb.requestId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer request not found: " + cb.requestId()));
         if (!"IN_PROGRESS".equals(r.getStatus())) {
@@ -57,6 +63,21 @@ public class CrmCustomerService {
         r.setStatus(cb.status());
         r.setErrorMessage(cb.errorMessage());
         repo.save(r);
+    }
+
+    private boolean isDuplicate(UUID eventId, String operationType, Long operationId) {
+        if (processedCallbackRepository.insertIfAbsent(eventId, operationType, operationId) == 1) {
+            return false;
+        }
+
+        var processed = processedCallbackRepository.findByEventId(eventId);
+        if (processed == null
+                || !operationType.equals(processed.getOperationType())
+                || !operationId.equals(processed.getOperationId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Callback event ID was already used for a different operation");
+        }
+        return true;
     }
 
     public CustomerRequestEntity getRequest(Long id) {

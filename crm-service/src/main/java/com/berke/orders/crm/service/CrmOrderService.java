@@ -6,6 +6,7 @@ import com.berke.orders.crm.model.ProductOrder;
 import com.berke.orders.crm.model.ProductOrderItem;
 import com.berke.orders.crm.repo.ProductOrderItemRepository;
 import com.berke.orders.crm.repo.ProductOrderRepository;
+import com.berke.orders.crm.repo.ProcessedCallbackEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,12 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.HashSet;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class CrmOrderService {
     private final ProductOrderRepository orderRepo;
     private final ProductOrderItemRepository itemRepo;
+    private final ProcessedCallbackEventRepository processedCallbackRepository;
     private final IntegrationProperties integrations;
     private final RestClient restClient = RestClient.builder().build();
 
@@ -59,7 +62,9 @@ public class CrmOrderService {
     }
 
     @Transactional
-    public void callback(ProductOrderCallback cb) {
+    public void callback(UUID eventId, ProductOrderCallback cb) {
+        if (isDuplicate(eventId, "PRODUCT_ORDER", cb.orderId())) return;
+
         var o = orderRepo.findById(cb.orderId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product order not found: " + cb.orderId()));
         if (!"IN_PROGRESS".equals(o.getStatus())) {
@@ -69,6 +74,21 @@ public class CrmOrderService {
         o.setStatus(cb.status());
         o.setErrorMessage(cb.errorMessage());
         orderRepo.save(o);
+    }
+
+    private boolean isDuplicate(UUID eventId, String operationType, Long operationId) {
+        if (processedCallbackRepository.insertIfAbsent(eventId, operationType, operationId) == 1) {
+            return false;
+        }
+
+        var processed = processedCallbackRepository.findByEventId(eventId);
+        if (processed == null
+                || !operationType.equals(processed.getOperationType())
+                || !operationId.equals(processed.getOperationId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Callback event ID was already used for a different operation");
+        }
+        return true;
     }
 
     public ProductOrder getLocalProductOrder(Long id) {

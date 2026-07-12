@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClient;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -194,7 +195,7 @@ public class OrchestrationRoutes extends RouteBuilder {
         customerRepo.save(request);
 
         var callback = new CustomerCallback(requestId, "COMPLETED", null);
-        callbackClient.post(request.getCrmCallbackUrl(), callback);
+        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID());
         log.log(requestId, "Response to CRM", "END", "SUCCESS", null, callback, null);
     }
 
@@ -206,7 +207,7 @@ public class OrchestrationRoutes extends RouteBuilder {
         customerRepo.save(request);
 
         var callback = new CustomerCallback(requestId, "FAILED", error);
-        callbackClient.post(request.getCrmCallbackUrl(), callback);
+        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID());
         log.log(requestId, "Response to CRM", "END", "FAILED", null, callback, error);
     }
 }
