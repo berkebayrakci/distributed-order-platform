@@ -15,6 +15,7 @@
     { "key": "customerRequestId", "value": "1111" },
     { "key": "orderId", "value": "1112" },
     { "key": "operationId", "value": "1112" },
+    { "key": "productInstanceId", "value": "1" },
     { "key": "universalProductKey", "value": "1112" }
   ],
   "item": [
@@ -70,7 +71,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"products\": [\n    {\n      \"sourceProductCode\": \"1893\",\n      \"sourceItemRef\": \"REF-9001\",\n      \"productType\": \"TARIFF\"\n    },\n    {\n      \"sourceProductCode\": \"41001\",\n      \"sourceItemRef\": \"REF-9002\",\n      \"productType\": \"ADDON\"\n    }\n  ]\n}",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"action\": \"ADD\",\n  \"products\": [\n    {\n      \"sourceProductCode\": \"1893\",\n      \"sourceItemRef\": \"REF-9001\",\n      \"productType\": \"TARIFF\"\n    },\n    {\n      \"sourceProductCode\": \"41001\",\n      \"sourceItemRef\": \"REF-9002\",\n      \"productType\": \"ADDON\"\n    }\n  ]\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": "{{crmBaseUrl}}/api/orders"
@@ -104,6 +105,31 @@
             "header": [],
             "url": "{{crmBaseUrl}}/api/orders/{{orderId}}/local"
           }
+        },
+        {
+          "name": "7. Remove Add-on Product Instance",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"action\": \"REMOVE\",\n  \"productInstanceId\": {{productInstanceId}},\n  \"reason\": \"CUSTOMER_REQUEST\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{crmBaseUrl}}/api/orders",
+            "description": "Set productInstanceId to an ACTIVE ADDON instance. Repeat the status request until COMPLETED or FAILED."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Accepted', () => pm.expect(pm.response.code).to.be.below(300));",
+              "if (pm.response.code < 300) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('orderId', body.orderId);",
+              "  pm.collectionVariables.set('operationId', body.orderId);",
+              "}"
+            ] }
+          }]
         }
       ]
     },

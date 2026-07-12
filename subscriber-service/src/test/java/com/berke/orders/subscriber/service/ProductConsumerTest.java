@@ -3,6 +3,7 @@ package com.berke.orders.subscriber.service;
 import com.berke.orders.subscriber.dto.SubscriberDtos.*;
 import com.berke.orders.subscriber.model.CustomerProduct;
 import com.berke.orders.subscriber.model.ProductLifecycleStatus;
+import com.berke.orders.subscriber.model.ProductOrderAction;
 import com.berke.orders.subscriber.repo.CustomerProductRepository;
 import com.berke.orders.subscriber.repo.CustomerRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -28,11 +29,12 @@ class ProductConsumerTest {
     private final CustomerProductRepository productRepo = mock(CustomerProductRepository.class);
     private final RabbitTemplate rabbit = mock(RabbitTemplate.class);
     private final InboxService inbox = mock(InboxService.class);
+    private final ProductRemovalService productRemovalService = mock(ProductRemovalService.class);
     private final Instant activationTime = Instant.parse("2024-01-31T10:15:30Z");
     private final ProductLifecycleCalculator lifecycleCalculator =
             new ProductLifecycleCalculator(Clock.fixed(activationTime, ZoneOffset.UTC));
     private final ProductConsumer consumer = new ProductConsumer(
-            customerRepo, productRepo, rabbit, inbox, lifecycleCalculator);
+            customerRepo, productRepo, rabbit, inbox, lifecycleCalculator, productRemovalService);
 
     @AfterEach
     void clearSynchronization() {
@@ -45,9 +47,7 @@ class ProductConsumerTest {
     void publishesSuccessOnlyAfterCommitAndUsesDeterministicReference() {
         when(customerRepo.existsById("customer-1")).thenReturn(true);
         when(productRepo.findByTargetItemRef(anyString())).thenReturn(Optional.empty());
-        var command = new ProductCommand(77L, "customer-1", List.of(
-                addonItem()
-        ));
+        var command = addCommand();
         TransactionSynchronizationManager.initSynchronization();
         when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
 
@@ -78,9 +78,7 @@ class ProductConsumerTest {
                 .expiresAt(Instant.parse("2023-04-30T10:15:30Z"))
                 .status(ProductLifecycleStatus.ACTIVE).activationOrderId(77L).build();
         when(productRepo.findByTargetItemRef(anyString())).thenReturn(Optional.of(existing));
-        var command = new ProductCommand(77L, "customer-1", List.of(
-                addonItem()
-        ));
+        var command = addCommand();
         TransactionSynchronizationManager.initSynchronization();
         when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
 
@@ -96,13 +94,13 @@ class ProductConsumerTest {
     void duplicateEventReplaysStoredResultWithoutProvisioningAgain() {
         UUID eventId = UUID.randomUUID();
         UUID correlationId = UUID.randomUUID();
-        var command = new ProductCommand(77L, "customer-1", List.of(
-                addonItem()));
+        var command = addCommand();
         var envelope = new ProductCommandEvent(eventId, "ProductCommand", 1, correlationId,
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
         var stored = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
                 eventId, "subscriber-service", Instant.now(),
-                new ProductResult(77L, "customer-1", true, null, List.of()));
+                new ProductResult(77L, "customer-1", ProductOrderAction.ADD,
+                        null, true, null, List.of()));
         when(inbox.begin(anyString(), eq(eventId), anyString(), anyInt(), eq(correlationId))).thenReturn(false);
         when(inbox.replay(anyString(), eq(eventId), eq(ProductResultEvent.class))).thenReturn(stored);
         TransactionSynchronizationManager.initSynchronization();
@@ -115,9 +113,29 @@ class ProductConsumerTest {
     }
 
     @Test
+    void removeCommandUsesStandardResultFlow() {
+        var command = new ProductCommand(88L, "customer-1", ProductOrderAction.REMOVE,
+                41L, "CUSTOMER_REQUEST", List.of());
+        TransactionSynchronizationManager.initSynchronization();
+        when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
+
+        consumer.consume(event(command));
+
+        verify(productRemovalService).remove(88L, "customer-1", 41L, "CUSTOMER_REQUEST");
+        var result = ArgumentCaptor.forClass(ProductResultEvent.class);
+        verify(inbox).storeResult(anyString(), any(), result.capture());
+        assertEquals(2, result.getValue().eventVersion());
+        assertEquals(ProductOrderAction.REMOVE, result.getValue().payload().action());
+        assertEquals(41L, result.getValue().payload().productInstanceId());
+        assertTrue(result.getValue().payload().success());
+        assertTrue(result.getValue().payload().items().isEmpty());
+        verifyNoInteractions(customerRepo, productRepo);
+    }
+
+    @Test
     void unsupportedVersionIsRejectedBeforeInboxInsertion() {
-        var command = new ProductCommand(77L, "customer-1", List.of());
-        var envelope = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 2, UUID.randomUUID(),
+        var command = addCommand();
+        var envelope = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 3, UUID.randomUUID(),
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
 
         assertThrows(UnsupportedEventException.class, () -> consumer.consume(envelope));
@@ -126,8 +144,14 @@ class ProductConsumerTest {
     }
 
     private ProductCommandEvent event(ProductCommand command) {
-        return new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 1, UUID.randomUUID(),
+        int version = command.action() == ProductOrderAction.REMOVE ? 2 : 1;
+        return new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", version, UUID.randomUUID(),
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
+    }
+
+    private ProductCommand addCommand() {
+        return new ProductCommand(77L, "customer-1", ProductOrderAction.ADD,
+                null, null, List.of(addonItem()));
     }
 
     private ProductCommandItem addonItem() {

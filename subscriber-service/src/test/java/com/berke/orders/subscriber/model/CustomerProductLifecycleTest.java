@@ -46,6 +46,18 @@ class CustomerProductLifecycleTest {
     }
 
     @Test
+    void suspendedProductCannotBeTerminated() {
+        var product = pending();
+        product.activate(101L, ACTIVATED_AT, EXPIRES_AT);
+        product.suspend();
+
+        assertThrows(IllegalStateException.class,
+                () -> product.terminate(202L, ACTIVATED_AT.plusSeconds(1), "CUSTOMER_REQUEST"));
+        assertEquals(ProductLifecycleStatus.SUSPENDED, product.getStatus());
+        assertNull(product.getTerminatedAt());
+    }
+
+    @Test
     void pendingProductCanBeCancelledOrFail() {
         var cancelled = pending();
         cancelled.cancel();

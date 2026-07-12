@@ -3,6 +3,7 @@ package com.berke.orders.subscriber.service;
 import com.berke.orders.subscriber.dto.SubscriberDtos.*;
 import com.berke.orders.subscriber.model.CustomerProduct;
 import com.berke.orders.subscriber.model.ProductLifecycleStatus;
+import com.berke.orders.subscriber.model.ProductOrderAction;
 import com.berke.orders.subscriber.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ public class ProductConsumer {
     private final RabbitTemplate rabbit;
     private final InboxService inbox;
     private final ProductLifecycleCalculator lifecycleCalculator;
+    private final ProductRemovalService productRemovalService;
     private static final String CONSUMER = "subscriber-product-command";
 
     @RabbitListener(queues = "subscriber.product.command.queue")
@@ -40,9 +42,17 @@ public class ProductConsumer {
             return;
         }
         try {
+            ProductOrderAction action = commandAction(cmd, event.eventVersion());
+            if (action == ProductOrderAction.REMOVE) {
+                productRemovalService.remove(cmd.orderId(), cmd.customerId(), cmd.productInstanceId(), cmd.reason());
+                finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
+                        cmd.productInstanceId(), true, null, List.of()));
+                return;
+            }
             List<ProductResultItem> replay = replayResult(cmd);
             if (replay != null) {
-                finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), true, null, replay));
+                finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
+                        null, true, null, replay));
                 return;
             }
             validate(cmd);
@@ -66,10 +76,13 @@ public class ProductConsumer {
                 result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
             }
             productRepo.flush();
-            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), true, null, result));
+            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
+                    null, true, null, result));
         } catch (IllegalArgumentException e) {
             log.error("Subscriber product order failed {}", cmd.orderId(), e);
-            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), false, e.getMessage(), List.of()));
+            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(),
+                    commandAction(cmd, event.eventVersion()), cmd.productInstanceId(),
+                    false, e.getMessage(), List.of()));
         }
     }
 
@@ -99,7 +112,7 @@ public class ProductConsumer {
     }
 
     private void finish(ProductCommandEvent command, ProductResult result) {
-        var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, command.correlationId(),
+        var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", command.eventVersion(), command.correlationId(),
                 command.eventId(), "subscriber-service", Instant.now(), result);
         inbox.storeResult(CONSUMER, command.eventId(), event);
         publishAfterCommit(event);
@@ -119,9 +132,15 @@ public class ProductConsumer {
                 || event.occurredAt() == null || event.payload() == null || !"ProductCommand".equals(event.eventType())) {
             throw new UnsupportedEventException("Malformed or unsupported ProductCommand envelope");
         }
-        if (event.eventVersion() != 1) {
+        if (event.eventVersion() != 1 && event.eventVersion() != 2) {
             throw new UnsupportedEventException("Unsupported ProductCommand version: " + event.eventVersion());
         }
+    }
+
+    private ProductOrderAction commandAction(ProductCommand command, int eventVersion) {
+        if (command.action() != null) return command.action();
+        if (eventVersion == 1) return ProductOrderAction.ADD;
+        throw new IllegalArgumentException("Product command has no order action");
     }
 
     private void validate(ProductCommand cmd) {

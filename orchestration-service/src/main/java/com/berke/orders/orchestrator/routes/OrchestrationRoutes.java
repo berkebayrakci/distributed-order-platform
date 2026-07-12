@@ -7,6 +7,8 @@ import com.berke.orders.orchestrator.exception.ProtocolFailureException;
 import com.berke.orders.orchestrator.exception.TransientInfrastructureException;
 import com.berke.orders.orchestrator.repo.CustomerRequestRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
+import com.berke.orders.orchestrator.model.ProductOrder;
+import com.berke.orders.orchestrator.model.ProductOrderAction;
 import com.berke.orders.orchestrator.service.OrchestratorService;
 import com.berke.orders.orchestrator.service.TraceLogService;
 import com.berke.orders.orchestrator.service.CallbackClient;
@@ -23,6 +25,7 @@ import org.springframework.web.client.RestClient;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -101,52 +104,14 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
 
                     log.log(orderId, correlationId, "Request from CRM", "START", "SUCCESS", req, null, null);
 
-                    log.log(orderId, correlationId, "Request to Catalog", "START", "SUCCESS", req.products(), null, null);
-                    var lookupReq = new ProductLookupRequest(
-                            req.products().stream().map(ProductRequest::sourceProductCode).toList()
-                    );
-                    var catalogResponse = callCatalog(() -> rest.post()
-                                    .uri(integrations.getCatalogBaseUrl() + "/api/catalog/lookup")
-                                    .header("X-Internal-Api-Key", integrations.getInternalApiKey())
-                                    .body(lookupReq)
-                                    .retrieve()
-                                    .body(ProductLookupResponse.class),
-                            "product lookup");
-                    validateCatalogResponse(catalogResponse);
-                    log.log(orderId, correlationId, "Response from Catalog", "END", "SUCCESS", lookupReq, catalogResponse, null);
+                    List<ProductCommandItem> items = req.action() == ProductOrderAction.ADD
+                            ? resolveProducts(orderId, correlationId, req.products())
+                            : List.of();
 
-                    Map<String, ProductMapItem> productMap = new HashMap<>();
-                    catalogResponse.products().forEach(p -> {
-                        if (productMap.put(p.sourceProductCode(), p) != null) {
-                            throw new ProtocolFailureException(
-                                    "Catalog returned duplicate mappings for source product code: " + p.sourceProductCode());
-                        }
-                    });
-
-                    var items = req.products().stream().map(product -> {
-                        var mapped = productMap.get(product.sourceProductCode());
-                        if (mapped == null) {
-                            throw new BusinessFailureException(
-                                    "Catalog translation missing for source product code: " + product.sourceProductCode());
-                        }
-                        if (!product.productType().equals(mapped.productType())) {
-                            throw new ProtocolFailureException("Requested product type does not match Catalog for code: "
-                                    + product.sourceProductCode());
-                        }
-                        return new ProductCommandItem(
-                                product.sourceProductCode(),
-                                mapped.targetProductCode(),
-                                product.sourceItemRef(),
-                                mapped.productType(),
-                                mapped.productVersion(),
-                                mapped.validityType(),
-                                mapped.validityAmount(),
-                                mapped.validityUnit()
-                        );
-                    }).toList();
-
-                    var command = new ProductCommand(orderId, req.customerId(), items);
-                    var event = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 1, correlationId,
+                    var command = new ProductCommand(orderId, req.customerId(), req.action(),
+                            req.productInstanceId(), req.reason(), items);
+                    int eventVersion = req.action() == ProductOrderAction.REMOVE ? 2 : 1;
+                    var event = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", eventVersion, correlationId,
                             env.causationId(), "orchestration-service", Instant.now(), command);
                     log.log(orderId, correlationId, "Request to Subscriber", "START", "SUCCESS", event, null, null);
                     exchange.getIn().setBody(event);
@@ -168,16 +133,16 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     validateEnvelope(event.eventId(), event.eventType(), event.eventVersion(), event.correlationId(),
                             event.causationId(), event.producer(), event.occurredAt(), event.payload(), "ProductResult");
                     var result = event.payload();
-                    validateProductResult(result);
+                    validateProductResult(result, event.eventVersion());
                     Long orderId = result.orderId();
                     exchange.getIn().setHeader("operationId", orderId);
                     exchange.getIn().setHeader("operationType", "PRODUCT_ORDER");
                     exchange.getIn().setHeader("correlationId", event.correlationId());
 
+                    var order = orderRepo.findById(orderId)
+                            .orElseThrow(() -> new ProtocolFailureException("Product order not found: " + orderId));
+                    validateProductResultMatchesOrder(result, event.eventVersion(), order);
                     if (!productOrderFinalizationService.claim(orderId)) {
-                        if (!orderRepo.existsById(orderId)) {
-                            throw new ProtocolFailureException("Product order not found: " + orderId);
-                        }
                         exchange.setProperty(PROCESS_CLAIMED_RESULT, false);
                         return;
                     }
@@ -191,6 +156,11 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     log.log(orderId, event.correlationId(), "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, event, result.errorMessage());
                     if (!result.success()) {
                         failOrder(orderId, result.errorMessage(), event);
+                        return;
+                    }
+
+                    if (productAction(result.action(), event.eventVersion()) == ProductOrderAction.REMOVE) {
+                        completeOrder(orderId, null, event);
                         return;
                     }
 
@@ -292,9 +262,47 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         if (!expectedType.equals(eventType)) {
             throw new ProtocolFailureException("Unsupported event type: " + eventType);
         }
-        if (eventVersion != 1) {
+        boolean productV2 = eventVersion == 2
+                && ("ProductCommand".equals(expectedType) || "ProductResult".equals(expectedType));
+        if (eventVersion != 1 && !productV2) {
             throw new ProtocolFailureException("Unsupported " + eventType + " version: " + eventVersion);
         }
+    }
+
+    private List<ProductCommandItem> resolveProducts(Long orderId, UUID correlationId, List<ProductRequest> products) {
+        log.log(orderId, correlationId, "Request to Catalog", "START", "SUCCESS", products, null, null);
+        var lookupReq = new ProductLookupRequest(products.stream().map(ProductRequest::sourceProductCode).toList());
+        var catalogResponse = callCatalog(() -> rest.post()
+                        .uri(integrations.getCatalogBaseUrl() + "/api/catalog/lookup")
+                        .header("X-Internal-Api-Key", integrations.getInternalApiKey())
+                        .body(lookupReq)
+                        .retrieve()
+                        .body(ProductLookupResponse.class),
+                "product lookup");
+        validateCatalogResponse(catalogResponse);
+        log.log(orderId, correlationId, "Response from Catalog", "END", "SUCCESS", lookupReq, catalogResponse, null);
+
+        Map<String, ProductMapItem> productMap = new HashMap<>();
+        catalogResponse.products().forEach(product -> {
+            if (productMap.put(product.sourceProductCode(), product) != null) {
+                throw new ProtocolFailureException(
+                        "Catalog returned duplicate mappings for source product code: " + product.sourceProductCode());
+            }
+        });
+        return products.stream().map(product -> {
+            var mapped = productMap.get(product.sourceProductCode());
+            if (mapped == null) {
+                throw new BusinessFailureException(
+                        "Catalog translation missing for source product code: " + product.sourceProductCode());
+            }
+            if (!product.productType().equals(mapped.productType())) {
+                throw new ProtocolFailureException("Requested product type does not match Catalog for code: "
+                        + product.sourceProductCode());
+            }
+            return new ProductCommandItem(product.sourceProductCode(), mapped.targetProductCode(),
+                    product.sourceItemRef(), mapped.productType(), mapped.productVersion(), mapped.validityType(),
+                    mapped.validityAmount(), mapped.validityUnit());
+        }).toList();
     }
 
     private void handleTerminalFailure(org.apache.camel.Exchange exchange) {
@@ -350,9 +358,17 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         }
     }
 
-    private void validateProductResult(ProductResult result) {
+    private void validateProductResult(ProductResult result, int eventVersion) {
         if (result == null || result.orderId() == null) {
             throw new ProtocolFailureException("Subscriber product result has no order ID");
+        }
+        ProductOrderAction action = productAction(result.action(), eventVersion);
+        if (action == ProductOrderAction.REMOVE
+                && (result.productInstanceId() == null || result.productInstanceId() <= 0)) {
+            throw new ProtocolFailureException("REMOVE result has no valid product instance ID");
+        }
+        if (action == ProductOrderAction.ADD && result.productInstanceId() != null) {
+            throw new ProtocolFailureException("ADD result unexpectedly contains a product instance ID");
         }
         if (!result.success()) {
             if (isBlank(result.errorMessage())) {
@@ -360,8 +376,14 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
             }
             return;
         }
-        if (result.items() == null || result.items().isEmpty()) {
+        if (result.items() == null) {
+            throw new ProtocolFailureException("Successful subscriber product result has no items collection");
+        }
+        if (action == ProductOrderAction.ADD && result.items().isEmpty()) {
             throw new ProtocolFailureException("Successful subscriber product result has no items");
+        }
+        if (action == ProductOrderAction.REMOVE && !result.items().isEmpty()) {
+            throw new ProtocolFailureException("Successful REMOVE result must not contain activation mapping items");
         }
 
         var sourceReferences = new HashSet<String>();
@@ -382,6 +404,21 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                 throw new ProtocolFailureException("Subscriber product result contains duplicate item references");
             }
         }
+    }
+
+    private void validateProductResultMatchesOrder(ProductResult result, int eventVersion, ProductOrder order) {
+        ProductOrderAction action = productAction(result.action(), eventVersion);
+        if (order.getAction() != action
+                || !java.util.Objects.equals(order.getProductInstanceId(), result.productInstanceId())
+                || !order.getCustomerId().equals(result.customerId())) {
+            throw new ProtocolFailureException("Subscriber product result does not match the stored order identity");
+        }
+    }
+
+    private ProductOrderAction productAction(ProductOrderAction action, int eventVersion) {
+        if (action != null) return action;
+        if (eventVersion == 1) return ProductOrderAction.ADD;
+        throw new ProtocolFailureException("Product message has no order action");
     }
 
     private void validateCustomerResult(CustomerResult result) {

@@ -84,7 +84,7 @@ public class CustomerProduct {
     }
 
     public void terminate(Long orderId, Instant terminationTime, String reason) {
-        requireOneOf("terminate", ProductLifecycleStatus.ACTIVE, ProductLifecycleStatus.SUSPENDED);
+        requireStatus(ProductLifecycleStatus.ACTIVE, "terminate");
         Long validatedOrderId = requireOrderId(orderId, "Termination");
         Instant validatedTerminationTime = requireTime(terminationTime, "Termination time is required");
         if (activatedAt != null && validatedTerminationTime.isBefore(activatedAt)) {

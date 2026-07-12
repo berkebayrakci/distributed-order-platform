@@ -5,6 +5,7 @@ import com.berke.orders.orchestrator.model.CallbackOutbox;
 import com.berke.orders.orchestrator.model.CallbackOutboxStatus;
 import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.model.ProductOrder;
+import com.berke.orders.orchestrator.model.ProductOrderAction;
 import com.berke.orders.orchestrator.repo.CallbackOutboxRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.berke.orders.orchestrator.repo.ProcessedEventRepository;
@@ -129,7 +130,8 @@ class ProductOrderFinalizationServiceTest {
         var correlationId = UUID.randomUUID();
         var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
                 UUID.randomUUID(), "subscriber-service", Instant.now(),
-                new ProductResult(45L, "customer-1", true, null, List.of()));
+                new ProductResult(45L, "customer-1", ProductOrderAction.ADD,
+                        null, true, null, List.of()));
         var order = ProductOrder.builder().orderId(45L).customerId("customer-1")
                 .correlationId(correlationId).crmCallbackUrl("http://crm/api/orders/callback")
                 .status(OrderStatus.FINALIZING).build();

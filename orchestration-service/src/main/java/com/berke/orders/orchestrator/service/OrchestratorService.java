@@ -5,6 +5,7 @@ import com.berke.orders.orchestrator.config.IntegrationProperties;
 import com.berke.orders.orchestrator.model.CustomerRequestEntity;
 import com.berke.orders.orchestrator.model.ProductOrder;
 import com.berke.orders.orchestrator.model.OrderStatus;
+import com.berke.orders.orchestrator.model.ProductOrderAction;
 import com.berke.orders.orchestrator.repo.CustomerRequestRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.berke.orders.orchestrator.repo.SequenceRepository;
@@ -34,10 +35,14 @@ public class OrchestratorService {
 
     @Transactional
     public ProductOrderResponse createOrder(CreateProductOrderRequest req, UUID correlationId, UUID causationId) {
+        validateProductOrder(req);
         Long id = seqRepo.nextOperationId();
         orderRepo.save(ProductOrder.builder()
                 .orderId(id)
                 .customerId(req.customerId())
+                .action(req.action())
+                .productInstanceId(req.productInstanceId())
+                .terminationReason(req.reason())
                 .correlationId(correlationId)
                 .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/orders/callback")
                 .status(OrderStatus.IN_PROGRESS)
@@ -94,6 +99,27 @@ public class OrchestratorService {
                 producer.asyncSendBody(endpoint, body);
             }
         });
+    }
+
+    private void validateProductOrder(CreateProductOrderRequest request) {
+        if (request.action() == ProductOrderAction.REMOVE) {
+            if (request.productInstanceId() == null || request.productInstanceId() <= 0) {
+                throw new IllegalArgumentException("Orchestration validation failed: REMOVE requires a positive productInstanceId");
+            }
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new IllegalArgumentException("Orchestration validation failed: REMOVE requires a termination reason");
+            }
+            if (!request.products().isEmpty()) {
+                throw new IllegalArgumentException("Orchestration validation failed: REMOVE must not contain products");
+            }
+            return;
+        }
+        if (request.products().isEmpty()) {
+            throw new IllegalArgumentException("Orchestration validation failed: ADD requires at least one product");
+        }
+        if (request.productInstanceId() != null || request.reason() != null) {
+            throw new IllegalArgumentException("Orchestration validation failed: ADD must not contain removal fields");
+        }
     }
 
     private OperationStatusResponse toProductOperation(ProductOrder order) {

@@ -1,12 +1,12 @@
 package com.berke.orders.orchestrator.dto;
 
+import com.berke.orders.orchestrator.model.ProductOrderAction;
 import java.time.LocalDateTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 
 public class OrchestratorDtos {
@@ -15,7 +15,14 @@ public class OrchestratorDtos {
     }
 
     public record CreateProductOrderRequest(@NotBlank String customerId,
-                                            @NotEmpty List<@Valid ProductRequest> products) {
+                                            ProductOrderAction action,
+                                            List<@Valid ProductRequest> products,
+                                            Long productInstanceId,
+                                            String reason) {
+        public CreateProductOrderRequest {
+            if (action == null) action = ProductOrderAction.ADD;
+            if (products == null) products = List.of();
+        }
     }
 
     public record ProductOrderResponse(Long orderId, String status) {
@@ -33,7 +40,8 @@ public class OrchestratorDtos {
     public record ProductLookupResponse(List<ProductMapItem> products) {
     }
 
-    public record ProductCommand(Long orderId, String customerId, List<ProductCommandItem> items) {
+    public record ProductCommand(Long orderId, String customerId, ProductOrderAction action,
+                                 Long productInstanceId, String reason, List<ProductCommandItem> items) {
     }
 
     public record ProductCommandEvent(UUID eventId, String eventType, int eventVersion, UUID correlationId,
@@ -45,7 +53,8 @@ public class OrchestratorDtos {
                                      Integer validityAmount, String validityUnit) {
     }
 
-    public record ProductResult(Long orderId, String customerId, boolean success, String errorMessage,
+    public record ProductResult(Long orderId, String customerId, ProductOrderAction action,
+                                Long productInstanceId, boolean success, String errorMessage,
                                 List<ProductResultItem> items) {
     }
 

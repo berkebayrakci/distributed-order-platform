@@ -4,6 +4,7 @@ import com.berke.orders.crm.dto.CrmDtos.*;
 import com.berke.orders.crm.config.IntegrationProperties;
 import com.berke.orders.crm.model.ProductOrder;
 import com.berke.orders.crm.model.ProductOrderItem;
+import com.berke.orders.crm.model.ProductOrderAction;
 import com.berke.orders.crm.repo.ProductOrderItemRepository;
 import com.berke.orders.crm.repo.ProductOrderRepository;
 import com.berke.orders.crm.repo.ProcessedCallbackEventRepository;
@@ -29,11 +30,14 @@ public class CrmOrderService {
 
     @Transactional
     public ProductOrderResponse create(CreateProductOrderRequest req, UUID correlationId) {
-        validate(req.products());
+        validate(req);
 
         var orchReq = new OrchestratorProductOrderRequest(
                 req.customerId(),
-                req.products()
+                req.action(),
+                req.products(),
+                req.productInstanceId(),
+                req.reason()
         );
 
         var res = restClient.post()
@@ -48,6 +52,9 @@ public class CrmOrderService {
         orderRepo.save(ProductOrder.builder()
                 .orderId(res.orderId())
                 .customerId(req.customerId())
+                .action(req.action())
+                .productInstanceId(req.productInstanceId())
+                .terminationReason(req.reason())
                 .status(res.status())
                 .build());
 
@@ -98,7 +105,26 @@ public class CrmOrderService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product order not found: " + id));
     }
 
-    private void validate(List<ProductRequest> products) {
+    private void validate(CreateProductOrderRequest request) {
+        if (request.action() == ProductOrderAction.REMOVE) {
+            if (request.productInstanceId() == null || request.productInstanceId() <= 0) {
+                throw new IllegalArgumentException("CRM validation failed: REMOVE requires a positive productInstanceId");
+            }
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new IllegalArgumentException("CRM validation failed: REMOVE requires a termination reason");
+            }
+            if (!request.products().isEmpty()) {
+                throw new IllegalArgumentException("CRM validation failed: REMOVE must not contain products");
+            }
+            return;
+        }
+        if (request.productInstanceId() != null || request.reason() != null) {
+            throw new IllegalArgumentException("CRM validation failed: ADD must not contain removal fields");
+        }
+        List<ProductRequest> products = request.products();
+        if (products.isEmpty()) {
+            throw new IllegalArgumentException("CRM validation failed: ADD requires at least one product");
+        }
         long tariffs = products.stream().filter(p -> "TARIFF".equals(p.productType())).count();
         long campaigns = products.stream().filter(p -> "CAMPAIGN".equals(p.productType())).count();
         var refs = new HashSet<String>();

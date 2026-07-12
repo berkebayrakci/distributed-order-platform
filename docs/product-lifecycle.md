@@ -10,7 +10,7 @@ PENDING -> ACTIVE -> SUSPENDED -> ACTIVE
 PENDING -> CANCELLED
 PENDING -> FAILED
 ACTIVE|SUSPENDED -> EXPIRED
-ACTIVE|SUSPENDED -> TERMINATED
+ACTIVE -> TERMINATED
 ```
 
 `EXPIRED`, `TERMINATED`, `CANCELLED`, and `FAILED` are terminal. Invalid transitions fail before changing any lifecycle
@@ -27,4 +27,14 @@ Migration `V3__add_product_lifecycle_status.sql` maps legacy active rows to `ACT
 explicit reason `LEGACY_INACTIVE_MIGRATION`. Historical order IDs remain null when the old schema did not retain them.
 The obsolete `active` column is removed so status is the only lifecycle source of truth.
 
-Automatic expiry scheduling and product removal workflows are intentionally not part of this phase.
+Automatic expiry scheduling and administrative removal are intentionally not part of this phase.
+
+## Normal add-on removal
+
+Normal removal follows CRM -> Orchestration -> Charging -> Orchestration -> CRM callback. A `REMOVE` order identifies
+one add-on product instance and includes a mandatory reason. Charging transitions only `ACTIVE` instances to
+`TERMINATED`, records the termination order, UTC timestamp, and reason, and retains the product row.
+
+A replay of the same removal order is successful without applying the transition again. A different order targeting an
+already terminated instance fails deterministically. Normal removal does not support tariffs, campaigns, suspended
+instances, or administrative forced termination.

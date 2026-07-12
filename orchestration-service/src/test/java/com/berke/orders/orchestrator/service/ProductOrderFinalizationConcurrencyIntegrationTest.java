@@ -4,6 +4,7 @@ import com.berke.orders.orchestrator.config.CallbackOutboxProperties;
 import com.berke.orders.orchestrator.model.CallbackOutboxStatus;
 import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.model.ProductOrder;
+import com.berke.orders.orchestrator.model.ProductOrderAction;
 import com.berke.orders.orchestrator.repo.CallbackOutboxRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +51,7 @@ class ProductOrderFinalizationConcurrencyIntegrationTest {
         orderRepository.saveAndFlush(ProductOrder.builder()
                 .orderId(81L)
                 .customerId("customer-1")
+                .action(ProductOrderAction.ADD)
                 .correlationId(java.util.UUID.randomUUID())
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
                 .status(OrderStatus.IN_PROGRESS)

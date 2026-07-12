@@ -1,8 +1,8 @@
 package com.berke.orders.crm.dto;
 
+import com.berke.orders.crm.model.ProductOrderAction;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
@@ -15,10 +15,19 @@ public class CrmDtos {
     }
 
     public record CreateProductOrderRequest(@NotBlank String customerId,
-                                            @NotEmpty List<@Valid ProductRequest> products) {
+                                            ProductOrderAction action,
+                                            List<@Valid ProductRequest> products,
+                                            Long productInstanceId,
+                                            String reason) {
+        public CreateProductOrderRequest {
+            if (action == null) action = ProductOrderAction.ADD;
+            if (products == null) products = List.of();
+        }
     }
 
-    public record OrchestratorProductOrderRequest(String customerId, List<ProductRequest> products) {
+    public record OrchestratorProductOrderRequest(String customerId, ProductOrderAction action,
+                                                   List<ProductRequest> products, Long productInstanceId,
+                                                   String reason) {
     }
 
     public record ProductOrderResponse(Long orderId, String status) {

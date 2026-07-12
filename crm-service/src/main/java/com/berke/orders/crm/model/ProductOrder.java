@@ -16,6 +16,11 @@ public class ProductOrder {
     @Id
     private Long orderId;
     private String customerId;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ProductOrderAction action;
+    private Long productInstanceId;
+    private String terminationReason;
     private String status;
     @Column(columnDefinition = "text")
     private String errorMessage;

@@ -1,10 +1,12 @@
 package com.berke.orders.subscriber.dto;
 
+import com.berke.orders.subscriber.model.ProductOrderAction;
 import java.util.*;
 import java.time.Instant;
 
 public class SubscriberDtos {
-    public record ProductCommand(Long orderId, String customerId, List<ProductCommandItem> items) {
+    public record ProductCommand(Long orderId, String customerId, ProductOrderAction action,
+                                 Long productInstanceId, String reason, List<ProductCommandItem> items) {
     }
 
     public record ProductCommandEvent(UUID eventId, String eventType, int eventVersion, UUID correlationId,
@@ -16,7 +18,8 @@ public class SubscriberDtos {
                                      Integer validityAmount, String validityUnit) {
     }
 
-    public record ProductResult(Long orderId, String customerId, boolean success, String errorMessage,
+    public record ProductResult(Long orderId, String customerId, ProductOrderAction action,
+                                Long productInstanceId, boolean success, String errorMessage,
                                 List<ProductResultItem> items) {
     }
 
