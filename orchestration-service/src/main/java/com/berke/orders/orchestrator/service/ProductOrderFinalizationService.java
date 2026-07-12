@@ -4,6 +4,7 @@ import com.berke.orders.orchestrator.config.CallbackOutboxProperties;
 import com.berke.orders.orchestrator.dto.OrchestratorDtos.ProductOrderCallback;
 import com.berke.orders.orchestrator.model.CallbackOutbox;
 import com.berke.orders.orchestrator.model.CallbackOutboxStatus;
+import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.repo.CallbackOutboxRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,31 +27,40 @@ public class ProductOrderFinalizationService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public boolean complete(Long orderId, Long universalProductKey) {
-        var order = orderRepository.findById(orderId).orElseThrow();
-        if (!"IN_PROGRESS".equals(order.getStatus())) return false;
+    public boolean claim(Long orderId) {
+        return orderRepository.claimFinalization(
+                orderId, OrderStatus.IN_PROGRESS, OrderStatus.FINALIZING) == 1;
+    }
 
+    @Transactional
+    public boolean complete(Long orderId, Long universalProductKey) {
         var callback = new ProductOrderCallback(orderId, "COMPLETED", null);
         String payload = serialize(callback);
+        if (orderRepository.completeFinalization(
+                orderId,
+                universalProductKey,
+                OrderStatus.FINALIZING,
+                OrderStatus.COMPLETED
+        ) != 1) return false;
 
-        order.setStatus("COMPLETED");
-        order.setUniversalProductKey(universalProductKey);
-        orderRepository.save(order);
+        var order = orderRepository.findById(orderId).orElseThrow();
         enqueue(orderId, order.getCrmCallbackUrl(), payload);
         return true;
     }
 
     @Transactional
     public boolean fail(Long orderId, String error) {
-        var order = orderRepository.findById(orderId).orElseThrow();
-        if (!"IN_PROGRESS".equals(order.getStatus())) return false;
-
         var callback = new ProductOrderCallback(orderId, "FAILED", error);
         String payload = serialize(callback);
+        if (orderRepository.failActiveOrder(
+                orderId,
+                error,
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.FINALIZING,
+                OrderStatus.FAILED
+        ) != 1) return false;
 
-        order.setStatus("FAILED");
-        order.setErrorMessage(error);
-        orderRepository.save(order);
+        var order = orderRepository.findById(orderId).orElseThrow();
         enqueue(orderId, order.getCrmCallbackUrl(), payload);
         return true;
     }

@@ -101,8 +101,12 @@ public class OrchestrationRoutes extends RouteBuilder {
                     exchange.getIn().setHeader("operationId", orderId);
                     exchange.getIn().setHeader("operationType", "PRODUCT_ORDER");
 
-                    var current = orderRepo.findById(orderId).orElseThrow();
-                    if (!"IN_PROGRESS".equals(current.getStatus())) return;
+                    if (!productOrderFinalizationService.claim(orderId)) {
+                        if (!orderRepo.existsById(orderId)) {
+                            throw new IllegalArgumentException("Product order not found: " + orderId);
+                        }
+                        return;
+                    }
 
                     log.log(orderId, "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, result, result.errorMessage());
                     if (!result.success()) {

@@ -3,6 +3,7 @@ package com.berke.orders.orchestrator.service;
 import com.berke.orders.orchestrator.config.CallbackOutboxProperties;
 import com.berke.orders.orchestrator.model.CallbackOutbox;
 import com.berke.orders.orchestrator.model.CallbackOutboxStatus;
+import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.model.ProductOrder;
 import com.berke.orders.orchestrator.repo.CallbackOutboxRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
@@ -35,19 +36,20 @@ class ProductOrderFinalizationServiceTest {
                 .orderId(42L)
                 .customerId("customer-1")
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
-                .status("IN_PROGRESS")
+                .status(OrderStatus.FINALIZING)
                 .build();
+        when(orderRepository.completeFinalization(
+                42L, 9001L, OrderStatus.FINALIZING, OrderStatus.COMPLETED)).thenReturn(1);
         when(orderRepository.findById(42L)).thenReturn(Optional.of(order));
 
         assertTrue(service.complete(42L, 9001L));
 
-        verify(orderRepository).save(order);
+        verify(orderRepository).completeFinalization(
+                42L, 9001L, OrderStatus.FINALIZING, OrderStatus.COMPLETED);
         var outboxCaptor = ArgumentCaptor.forClass(CallbackOutbox.class);
         verify(outboxRepository).save(outboxCaptor.capture());
         CallbackOutbox outbox = outboxCaptor.getValue();
 
-        assertEquals("COMPLETED", order.getStatus());
-        assertEquals(9001L, order.getUniversalProductKey());
         assertEquals(42L, outbox.getOperationId());
         assertEquals("PRODUCT_ORDER", outbox.getOperationType());
         assertEquals(CallbackOutboxStatus.PENDING, outbox.getStatus());
@@ -70,8 +72,15 @@ class ProductOrderFinalizationServiceTest {
         var order = ProductOrder.builder()
                 .orderId(43L)
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
-                .status("IN_PROGRESS")
+                .status(OrderStatus.FINALIZING)
                 .build();
+        when(orderRepository.failActiveOrder(
+                43L,
+                "downstream failure",
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.FINALIZING,
+                OrderStatus.FAILED
+        )).thenReturn(1);
         when(orderRepository.findById(43L)).thenReturn(Optional.of(order));
 
         assertTrue(service.fail(43L, "downstream failure"));
@@ -79,7 +88,29 @@ class ProductOrderFinalizationServiceTest {
         var outboxCaptor = ArgumentCaptor.forClass(CallbackOutbox.class);
         verify(outboxRepository).save(outboxCaptor.capture());
         var payload = objectMapper.readTree(outboxCaptor.getValue().getPayloadJson());
-        assertEquals("FAILED", order.getStatus());
+        verify(orderRepository).failActiveOrder(
+                43L,
+                "downstream failure",
+                OrderStatus.IN_PROGRESS,
+                OrderStatus.FINALIZING,
+                OrderStatus.FAILED
+        );
         assertEquals("downstream failure", payload.get("errorMessage").asText());
+    }
+
+    @Test
+    void onlyOneConditionalClaimCanOwnFinalization() {
+        var orderRepository = mock(ProductOrderRepository.class);
+        var service = new ProductOrderFinalizationService(
+                orderRepository,
+                mock(CallbackOutboxRepository.class),
+                new CallbackOutboxProperties(),
+                new ObjectMapper()
+        );
+        when(orderRepository.claimFinalization(
+                44L, OrderStatus.IN_PROGRESS, OrderStatus.FINALIZING)).thenReturn(1, 0);
+
+        assertTrue(service.claim(44L));
+        org.junit.jupiter.api.Assertions.assertFalse(service.claim(44L));
     }
 }

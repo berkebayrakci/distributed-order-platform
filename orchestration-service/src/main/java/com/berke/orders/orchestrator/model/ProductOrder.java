@@ -17,7 +17,8 @@ public class ProductOrder {
     private Long orderId;
     private String customerId;
     private String crmCallbackUrl;
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
     @Column(columnDefinition = "text")
     private String errorMessage;
     private Long universalProductKey;

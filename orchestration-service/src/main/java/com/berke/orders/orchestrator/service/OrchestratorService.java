@@ -4,6 +4,7 @@ import com.berke.orders.orchestrator.dto.OrchestratorDtos.*;
 import com.berke.orders.orchestrator.config.IntegrationProperties;
 import com.berke.orders.orchestrator.model.CustomerRequestEntity;
 import com.berke.orders.orchestrator.model.ProductOrder;
+import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.repo.CustomerRequestRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.berke.orders.orchestrator.repo.SequenceRepository;
@@ -37,7 +38,7 @@ public class OrchestratorService {
                 .orderId(id)
                 .customerId(req.customerId())
                 .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/orders/callback")
-                .status("IN_PROGRESS")
+                .status(OrderStatus.IN_PROGRESS)
                 .build());
         sendAfterCommit("direct:processProductOrder", new ProductOrderEnvelope(id, req));
         return new ProductOrderResponse(id, "IN_PROGRESS");
@@ -97,7 +98,7 @@ public class OrchestratorService {
                 order.getOrderId(),
                 "PRODUCT_ORDER",
                 order.getCustomerId(),
-                order.getStatus(),
+                order.getStatus().name(),
                 order.getErrorMessage(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
