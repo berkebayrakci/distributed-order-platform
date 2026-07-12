@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import com.berke.orders.subscriber.exception.UnsupportedEventException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -22,15 +24,23 @@ public class ProductConsumer {
     private final CustomerRepository customerRepo;
     private final CustomerProductRepository productRepo;
     private final RabbitTemplate rabbit;
+    private final InboxService inbox;
+    private static final String CONSUMER = "subscriber-product-command";
 
     @RabbitListener(queues = "subscriber.product.command.queue")
     @Transactional
-    public void consume(ProductCommand cmd) {
+    public void consume(ProductCommandEvent event) {
+        validateEnvelope(event);
+        ProductCommand cmd = event.payload();
         log.info("Subscriber service received product order {}", cmd.orderId());
+        if (!inbox.begin(CONSUMER, event.eventId(), event.eventType(), event.eventVersion(), event.correlationId())) {
+            publishAfterCommit(inbox.replay(CONSUMER, event.eventId(), ProductResultEvent.class));
+            return;
+        }
         try {
             List<ProductResultItem> replay = replayResult(cmd);
             if (replay != null) {
-                publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), true, null, replay));
+                finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), true, null, replay));
                 return;
             }
             validate(cmd);
@@ -41,10 +51,10 @@ public class ProductConsumer {
                 result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
             }
             productRepo.flush();
-            publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), true, null, result));
+            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), true, null, result));
         } catch (IllegalArgumentException e) {
             log.error("Subscriber product order failed {}", cmd.orderId(), e);
-            publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), false, e.getMessage(), List.of()));
+            finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), false, e.getMessage(), List.of()));
         }
     }
 
@@ -73,13 +83,30 @@ public class ProductConsumer {
         return "SUBITEM-" + orderId + "-" + id;
     }
 
-    private void publishAfterCommit(ProductResult result) {
+    private void finish(ProductCommandEvent command, ProductResult result) {
+        var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, command.correlationId(),
+                command.eventId(), "subscriber-service", Instant.now(), result);
+        inbox.storeResult(CONSUMER, command.eventId(), event);
+        publishAfterCommit(event);
+    }
+
+    private void publishAfterCommit(ProductResultEvent result) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
                 rabbit.convertAndSend("subscriber.product.result.queue", result);
             }
         });
+    }
+
+    private void validateEnvelope(ProductCommandEvent event) {
+        if (event == null || event.eventId() == null || event.correlationId() == null || event.causationId() == null
+                || event.occurredAt() == null || event.payload() == null || !"ProductCommand".equals(event.eventType())) {
+            throw new UnsupportedEventException("Malformed or unsupported ProductCommand envelope");
+        }
+        if (event.eventVersion() != 1) {
+            throw new UnsupportedEventException("Unsupported ProductCommand version: " + event.eventVersion());
+        }
     }
 
     private void validate(ProductCommand cmd) {

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.*;
+import java.util.UUID;
 
 @Entity
 @Table(name = "customer_request")
@@ -16,6 +17,7 @@ public class CustomerRequestEntity {
     @Id
     Long requestId;
     String customerId;
+    UUID correlationId;
     String firstName;
     String lastName;
     String crmCallbackUrl;

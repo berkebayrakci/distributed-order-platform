@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.UUID;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -37,6 +39,15 @@ class OrchestrationResultValidationTest {
 
         assertThrows(ProtocolFailureException.class,
                 () -> ReflectionTestUtils.invokeMethod(routes, "validateProductResult", result));
+    }
+
+    @Test
+    void unsupportedEnvelopeVersionIsProtocolFailure() {
+        var routes = routes();
+
+        assertThrows(ProtocolFailureException.class, () -> ReflectionTestUtils.invokeMethod(routes,
+                "validateEnvelope", UUID.randomUUID(), "ProductResult", 2, UUID.randomUUID(),
+                UUID.randomUUID(), "subscriber-service", Instant.now(), new Object(), "ProductResult"));
     }
 
     private OrchestrationRoutes routes() {

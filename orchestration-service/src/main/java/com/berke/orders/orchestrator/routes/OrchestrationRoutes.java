@@ -11,6 +11,7 @@ import com.berke.orders.orchestrator.service.OrchestratorService;
 import com.berke.orders.orchestrator.service.TraceLogService;
 import com.berke.orders.orchestrator.service.CallbackClient;
 import com.berke.orders.orchestrator.service.ProductOrderFinalizationService;
+import com.berke.orders.orchestrator.service.CustomerResultFinalizationService;
 import lombok.RequiredArgsConstructor;
 import org.apache.camel.builder.RouteBuilder;
 import org.springframework.stereotype.Component;
@@ -25,9 +26,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.time.Instant;
 
 @Component
-@RequiredArgsConstructor
 public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
     private static final String PROCESS_CLAIMED_RESULT = "processClaimedResult";
     private static final String PROTOCOL_DLQ_ENDPOINT = "direct:result-protocol-dead-letter";
@@ -41,7 +42,31 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
     private final IntegrationProperties integrations;
     private final CallbackClient callbackClient;
     private final ProductOrderFinalizationService productOrderFinalizationService;
+    private final CustomerResultFinalizationService customerResultFinalizationService;
     private final RestClient rest = RestClient.builder().build();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OrchestrationRoutes(TraceLogService log, ProductOrderRepository orderRepo,
+                               CustomerRequestRepository customerRepo, IntegrationProperties integrations,
+                               CallbackClient callbackClient,
+                               ProductOrderFinalizationService productOrderFinalizationService,
+                               CustomerResultFinalizationService customerResultFinalizationService) {
+        this.log = log;
+        this.orderRepo = orderRepo;
+        this.customerRepo = customerRepo;
+        this.integrations = integrations;
+        this.callbackClient = callbackClient;
+        this.productOrderFinalizationService = productOrderFinalizationService;
+        this.customerResultFinalizationService = customerResultFinalizationService;
+    }
+
+    public OrchestrationRoutes(TraceLogService log, ProductOrderRepository orderRepo,
+                               CustomerRequestRepository customerRepo, IntegrationProperties integrations,
+                               CallbackClient callbackClient,
+                               ProductOrderFinalizationService productOrderFinalizationService) {
+        this(log, orderRepo, customerRepo, integrations, callbackClient,
+                productOrderFinalizationService, null);
+    }
 
     @Override
     public void configure() {
@@ -69,12 +94,14 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     }
                     var req = env.request();
                     Long orderId = env.orderId();
+                    UUID correlationId = env.correlationId();
                     exchange.getIn().setHeader("operationId", orderId);
                     exchange.getIn().setHeader("operationType", "PRODUCT_ORDER");
+                    exchange.getIn().setHeader("correlationId", correlationId);
 
-                    log.log(orderId, "Request from CRM", "START", "SUCCESS", req, null, null);
+                    log.log(orderId, correlationId, "Request from CRM", "START", "SUCCESS", req, null, null);
 
-                    log.log(orderId, "Request to Catalog", "START", "SUCCESS", req.products(), null, null);
+                    log.log(orderId, correlationId, "Request to Catalog", "START", "SUCCESS", req.products(), null, null);
                     var lookupReq = new ProductLookupRequest(
                             req.products().stream().map(ProductRequest::sourceProductCode).toList()
                     );
@@ -86,7 +113,7 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                                     .body(ProductLookupResponse.class),
                             "product lookup");
                     validateCatalogResponse(catalogResponse);
-                    log.log(orderId, "Response from Catalog", "END", "SUCCESS", lookupReq, catalogResponse, null);
+                    log.log(orderId, correlationId, "Response from Catalog", "END", "SUCCESS", lookupReq, catalogResponse, null);
 
                     Map<String, ProductMapItem> productMap = new HashMap<>();
                     catalogResponse.products().forEach(p -> {
@@ -111,8 +138,10 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     }).toList();
 
                     var command = new ProductCommand(orderId, req.customerId(), items);
-                    log.log(orderId, "Request to Subscriber", "START", "SUCCESS", command, null, null);
-                    exchange.getIn().setBody(command);
+                    var event = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 1, correlationId,
+                            env.causationId(), "orchestration-service", Instant.now(), command);
+                    log.log(orderId, correlationId, "Request to Subscriber", "START", "SUCCESS", event, null, null);
+                    exchange.getIn().setBody(event);
                 })
             .marshal()
             .json()
@@ -124,13 +153,18 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
             .routeId("subscriber-product-result-route")
             .setProperty(RESULT_DLQ_PROPERTY, constant(PRODUCT_RESULT_DLQ))
             .unmarshal()
-            .json(ProductResult.class)
+            .json(ProductResultEvent.class)
             .process(exchange -> {
-                    var result = exchange.getIn().getBody(ProductResult.class);
+                    var event = exchange.getIn().getBody(ProductResultEvent.class);
+                    if (event == null) throw new ProtocolFailureException("ProductResult envelope is missing");
+                    validateEnvelope(event.eventId(), event.eventType(), event.eventVersion(), event.correlationId(),
+                            event.causationId(), event.producer(), event.occurredAt(), event.payload(), "ProductResult");
+                    var result = event.payload();
                     validateProductResult(result);
                     Long orderId = result.orderId();
                     exchange.getIn().setHeader("operationId", orderId);
                     exchange.getIn().setHeader("operationType", "PRODUCT_ORDER");
+                    exchange.getIn().setHeader("correlationId", event.correlationId());
 
                     if (!productOrderFinalizationService.claim(orderId)) {
                         if (!orderRepo.existsById(orderId)) {
@@ -143,15 +177,16 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                 })
             .filter(exchangeProperty(PROCESS_CLAIMED_RESULT).isEqualTo(true))
             .process(exchange -> {
-                    var result = exchange.getIn().getBody(ProductResult.class);
+                    var event = exchange.getIn().getBody(ProductResultEvent.class);
+                    var result = event.payload();
                     Long orderId = result.orderId();
-                    log.log(orderId, "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, result, result.errorMessage());
+                    log.log(orderId, event.correlationId(), "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, event, result.errorMessage());
                     if (!result.success()) {
-                        failOrder(orderId, result.errorMessage());
+                        failOrder(orderId, result.errorMessage(), event);
                         return;
                     }
 
-                    log.log(orderId, "Request to Catalog", "START", "SUCCESS", result, null, null);
+                    log.log(orderId, event.correlationId(), "Request to Catalog", "START", "SUCCESS", result, null, null);
                     var insertRequest = new RuntimeMappingInsertRequest(orderId,
                             result.items().stream()
                                     .map(i -> new RuntimeMappingInsertItem(
@@ -173,9 +208,9 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     if (insertResponse.universalProductKey() == null) {
                         throw new ProtocolFailureException("Catalog runtime mapping response has no universal product key");
                     }
-                    log.log(orderId, "Response from Catalog", "END", "SUCCESS", insertRequest, insertResponse, null);
+                    log.log(orderId, event.correlationId(), "Response from Catalog", "END", "SUCCESS", insertRequest, insertResponse, null);
 
-                    completeOrder(orderId, insertResponse.universalProductKey());
+                    completeOrder(orderId, insertResponse.universalProductKey(), event);
                 })
             .end();
 
@@ -188,13 +223,17 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                     }
                     var req = env.request();
                     Long requestId = env.requestId();
+                    UUID correlationId = env.correlationId();
                     exchange.getIn().setHeader("operationId", requestId);
                     exchange.getIn().setHeader("operationType", "CUSTOMER_CREATE");
+                    exchange.getIn().setHeader("correlationId", correlationId);
 
-                    log.log(requestId, "Request from CRM", "START", "SUCCESS", req, null, null);
+                    log.log(requestId, correlationId, "Request from CRM", "START", "SUCCESS", req, null, null);
                     var command = new CustomerCommand(requestId, req.customerId(), req.firstName(), req.lastName());
-                    log.log(requestId, "Request to Subscriber", "START", "SUCCESS", command, null, null);
-                    exchange.getIn().setBody(command);
+                    var event = new CustomerCommandEvent(UUID.randomUUID(), "CustomerCommand", 1, correlationId,
+                            env.causationId(), "orchestration-service", Instant.now(), command);
+                    log.log(requestId, correlationId, "Request to Subscriber", "START", "SUCCESS", event, null, null);
+                    exchange.getIn().setBody(event);
                 })
             .marshal()
             .json()
@@ -206,30 +245,47 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
             .routeId("subscriber-customer-result-route")
             .setProperty(RESULT_DLQ_PROPERTY, constant(CUSTOMER_RESULT_DLQ))
             .unmarshal()
-            .json(CustomerResult.class)
+            .json(CustomerResultEvent.class)
             .process(exchange -> {
-                    var result = exchange.getIn().getBody(CustomerResult.class);
+                    var event = exchange.getIn().getBody(CustomerResultEvent.class);
+                    if (event == null) throw new ProtocolFailureException("CustomerResult envelope is missing");
+                    validateEnvelope(event.eventId(), event.eventType(), event.eventVersion(), event.correlationId(),
+                            event.causationId(), event.producer(), event.occurredAt(), event.payload(), "CustomerResult");
+                    var result = event.payload();
                     validateCustomerResult(result);
                     Long requestId = result.requestId();
                     exchange.getIn().setHeader("operationId", requestId);
                     exchange.getIn().setHeader("operationType", "CUSTOMER_CREATE");
+                    exchange.getIn().setHeader("correlationId", event.correlationId());
 
-                    var current = customerRepo.findById(requestId).orElseThrow();
-                    if (!"IN_PROGRESS".equals(current.getStatus())) return;
-
-                    log.log(requestId, "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, result, result.errorMessage());
-                    if (!result.success()) {
-                        failCustomer(requestId, result.errorMessage());
-                        return;
-                    }
-                    completeCustomer(requestId);
+                    log.log(requestId, event.correlationId(), "Response from Subscriber", "END", result.success() ? "SUCCESS" : "FAILED", null, event, result.errorMessage());
+                    customerResultFinalizationService.finalizeResult(event).ifPresent(delivery -> {
+                        callbackClient.post(delivery.callbackUrl(), delivery.callback(), UUID.randomUUID(), delivery.correlationId());
+                        log.log(requestId, delivery.correlationId(), "Response to CRM", "END",
+                                result.success() ? "SUCCESS" : "FAILED", null, delivery.callback(), result.errorMessage());
+                    });
                 });
     }
 
-    private void completeOrder(Long orderId, Long universalProductKey) {
-        if (productOrderFinalizationService.complete(orderId, universalProductKey)) {
-            log.log(orderId, "CRM callback queued", "END", "SUCCESS", null,
+    private void completeOrder(Long orderId, Long universalProductKey, ProductResultEvent event) {
+        if (productOrderFinalizationService.complete(orderId, universalProductKey, event)) {
+            log.log(orderId, event.correlationId(), "CRM callback queued", "END", "SUCCESS", null,
                     new ProductOrderCallback(orderId, "COMPLETED", null), null);
+        }
+    }
+
+    private void validateEnvelope(UUID eventId, String eventType, int eventVersion, UUID correlationId,
+                                  UUID causationId, String producer, Instant occurredAt, Object payload,
+                                  String expectedType) {
+        if (eventId == null || correlationId == null || causationId == null || occurredAt == null
+                || producer == null || producer.isBlank() || payload == null) {
+            throw new ProtocolFailureException("Message envelope is missing required fields");
+        }
+        if (!expectedType.equals(eventType)) {
+            throw new ProtocolFailureException("Unsupported event type: " + eventType);
+        }
+        if (eventVersion != 1) {
+            throw new ProtocolFailureException("Unsupported " + eventType + " version: " + eventVersion);
         }
     }
 
@@ -337,14 +393,21 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         }
     }
 
-    private void completeCustomer(Long requestId) {
+    private void failOrder(Long orderId, String error, ProductResultEvent event) {
+        if (productOrderFinalizationService.failResult(orderId, error, event)) {
+            log.log(orderId, event.correlationId(), "CRM callback queued", "END", "FAILED", null,
+                    new ProductOrderCallback(orderId, "FAILED", error), error);
+        }
+    }
+
+    private void completeCustomer(Long requestId, UUID correlationId) {
         var request = customerRepo.findById(requestId).orElseThrow();
         if (!"IN_PROGRESS".equals(request.getStatus())) return;
         request.setStatus("COMPLETED");
         customerRepo.save(request);
 
         var callback = new CustomerCallback(requestId, "COMPLETED", null);
-        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID());
+        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID(), correlationId);
         log.log(requestId, "Response to CRM", "END", "SUCCESS", null, callback, null);
     }
 
@@ -356,7 +419,7 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         customerRepo.save(request);
 
         var callback = new CustomerCallback(requestId, "FAILED", error);
-        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID());
+        callbackClient.post(request.getCrmCallbackUrl(), callback, UUID.randomUUID(), request.getCorrelationId());
         log.log(requestId, "Response to CRM", "END", "FAILED", null, callback, error);
     }
 }

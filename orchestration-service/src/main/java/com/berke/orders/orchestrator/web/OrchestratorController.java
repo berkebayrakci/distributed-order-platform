@@ -8,6 +8,7 @@ import com.berke.orders.orchestrator.service.OrchestratorService;
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import java.util.UUID;
 
 
 @RestController
@@ -19,13 +20,17 @@ public class OrchestratorController {
     private final TraceEventRepository traceRepo;
 
     @PostMapping("/orders")
-    public Object createOrder(@Valid @RequestBody CreateProductOrderRequest request) {
-        return service.createOrder(request);
+    public Object createOrder(@Valid @RequestBody CreateProductOrderRequest request,
+                              @RequestHeader("X-Correlation-Id") UUID correlationId,
+                              @RequestHeader("X-Event-Id") UUID causationId) {
+        return service.createOrder(request, correlationId, causationId);
     }
 
     @PostMapping("/customers")
-    public Object createCustomer(@Valid @RequestBody CreateCustomerRequest request) {
-        return service.createCustomer(request);
+    public Object createCustomer(@Valid @RequestBody CreateCustomerRequest request,
+                                 @RequestHeader("X-Correlation-Id") UUID correlationId,
+                                 @RequestHeader("X-Event-Id") UUID causationId) {
+        return service.createCustomer(request, correlationId, causationId);
     }
 
     @GetMapping("/operations/{id}")

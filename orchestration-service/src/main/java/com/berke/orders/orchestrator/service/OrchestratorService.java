@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -32,30 +33,32 @@ public class OrchestratorService {
     private final RestClient subscriberClient = RestClient.builder().build();
 
     @Transactional
-    public ProductOrderResponse createOrder(CreateProductOrderRequest req) {
+    public ProductOrderResponse createOrder(CreateProductOrderRequest req, UUID correlationId, UUID causationId) {
         Long id = seqRepo.nextOperationId();
         orderRepo.save(ProductOrder.builder()
                 .orderId(id)
                 .customerId(req.customerId())
+                .correlationId(correlationId)
                 .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/orders/callback")
                 .status(OrderStatus.IN_PROGRESS)
                 .build());
-        sendAfterCommit("direct:processProductOrder", new ProductOrderEnvelope(id, req));
+        sendAfterCommit("direct:processProductOrder", new ProductOrderEnvelope(id, correlationId, causationId, req));
         return new ProductOrderResponse(id, "IN_PROGRESS");
     }
 
     @Transactional
-    public CustomerRequestResponse createCustomer(CreateCustomerRequest req) {
+    public CustomerRequestResponse createCustomer(CreateCustomerRequest req, UUID correlationId, UUID causationId) {
         Long id = seqRepo.nextOperationId();
         customerRepo.save(CustomerRequestEntity.builder()
                 .requestId(id)
                 .customerId(req.customerId())
+                .correlationId(correlationId)
                 .firstName(req.firstName())
                 .lastName(req.lastName())
                 .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/customers/callback")
                 .status("IN_PROGRESS")
                 .build());
-        sendAfterCommit("direct:processCustomerRequest", new CustomerEnvelope(id, req));
+        sendAfterCommit("direct:processCustomerRequest", new CustomerEnvelope(id, correlationId, causationId, req));
         return new CustomerRequestResponse(id, "IN_PROGRESS");
     }
 
@@ -117,9 +120,11 @@ public class OrchestratorService {
         );
     }
 
-    public record ProductOrderEnvelope(Long orderId, CreateProductOrderRequest request) {
+    public record ProductOrderEnvelope(Long orderId, UUID correlationId, UUID causationId,
+                                       CreateProductOrderRequest request) {
     }
 
-    public record CustomerEnvelope(Long requestId, CreateCustomerRequest request) {
+    public record CustomerEnvelope(Long requestId, UUID correlationId, UUID causationId,
+                                   CreateCustomerRequest request) {
     }
 }

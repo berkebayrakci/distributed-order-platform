@@ -33,7 +33,7 @@ class CallbackOutboxWorkerTest {
                 .when(callbackClient).postOnce(
                         firstAttempt.callbackUrl(),
                         new com.berke.orders.orchestrator.dto.OrchestratorDtos.ProductOrderCallback(42L, "COMPLETED", null),
-                        eventId);
+                        eventId, eventId);
         when(deliveryService.recordFailure(
                 org.mockito.ArgumentMatchers.eq(firstAttempt),
                 org.mockito.ArgumentMatchers.any(ResourceAccessException.class)))
@@ -50,6 +50,7 @@ class CallbackOutboxWorkerTest {
         verify(callbackClient, times(2)).postOnce(
                 org.mockito.ArgumentMatchers.eq(firstAttempt.callbackUrl()),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(eventId),
                 org.mockito.ArgumentMatchers.eq(eventId));
     }
 
@@ -64,6 +65,7 @@ class CallbackOutboxWorkerTest {
         doThrow(failure).when(callbackClient).postOnce(
                 org.mockito.ArgumentMatchers.eq(claim.callbackUrl()),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(claim.eventId()),
                 org.mockito.ArgumentMatchers.eq(claim.eventId()));
         when(deliveryService.recordFailure(claim, failure)).thenReturn(CallbackOutboxStatus.DEAD);
 

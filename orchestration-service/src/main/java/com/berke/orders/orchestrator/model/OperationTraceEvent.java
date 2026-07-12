@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.*;
+import java.util.UUID;
 
 @Entity
 @Table(name = "operation_trace_event")
@@ -17,6 +18,7 @@ public class OperationTraceEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
     Long operationId;
+    UUID correlationId;
     String traceEventId;
     Integer stepNo;
     String description;

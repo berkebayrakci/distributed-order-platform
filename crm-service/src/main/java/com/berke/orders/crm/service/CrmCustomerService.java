@@ -25,7 +25,7 @@ public class CrmCustomerService {
     private final RestClient restClient = RestClient.builder().build();
 
     @Transactional
-    public CustomerRequestResponse create(CreateCustomerRequest req) {
+    public CustomerRequestResponse create(CreateCustomerRequest req, UUID correlationId) {
         var orchReq = new OrchestratorCustomerRequest(
                 req.customerId(),
                 req.firstName(),
@@ -35,6 +35,8 @@ public class CrmCustomerService {
         var res = restClient.post()
                 .uri(integrations.getOrchestratorBaseUrl() + "/api/orchestrator/customers")
                 .header("X-Internal-Api-Key", integrations.getInternalApiKey())
+                .header("X-Correlation-Id", correlationId.toString())
+                .header("X-Event-Id", UUID.randomUUID().toString())
                 .body(orchReq)
                 .retrieve()
                 .body(CustomerRequestResponse.class);

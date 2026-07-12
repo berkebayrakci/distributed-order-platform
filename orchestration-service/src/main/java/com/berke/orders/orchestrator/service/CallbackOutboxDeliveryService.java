@@ -92,17 +92,25 @@ public class CallbackOutboxDeliveryService {
             UUID eventId,
             String operationType,
             Long operationId,
+            String correlationId,
             String callbackUrl,
             String payloadJson,
             int attemptCount,
             long version
     ) {
+        public Claim(Long id, UUID eventId, String operationType, Long operationId, String callbackUrl,
+                     String payloadJson, int attemptCount, long version) {
+            this(id, eventId, operationType, operationId, eventId.toString(), callbackUrl,
+                    payloadJson, attemptCount, version);
+        }
+
         static Claim from(CallbackOutbox row) {
             return new Claim(
                     row.getId(),
                     row.getEventId(),
                     row.getOperationType(),
                     row.getOperationId(),
+                    row.getCorrelationId(),
                     row.getCallbackUrl(),
                     row.getPayloadJson(),
                     row.getAttemptCount(),

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "product_order")
@@ -16,6 +17,7 @@ public class ProductOrder {
     @Id
     private Long orderId;
     private String customerId;
+    private UUID correlationId;
     private String crmCallbackUrl;
     @Enumerated(EnumType.STRING)
     private OrderStatus status;

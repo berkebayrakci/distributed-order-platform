@@ -18,23 +18,29 @@ public class CallbackClient {
 
     @Retryable(retryFor = RestClientException.class, maxAttempts = 6,
             backoff = @Backoff(delay = 200, multiplier = 2.0, maxDelay = 5000))
-    public void post(String url, Object body, UUID eventId) {
+    public void post(String url, Object body, UUID eventId, UUID correlationId) {
         rest.post()
                 .uri(url)
                 .header("X-Internal-Api-Key", integrations.getInternalApiKey())
                 .header("X-Callback-Event-Id", eventId.toString())
+                .header("X-Correlation-Id", correlationId.toString())
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    public void postOnce(String url, Object body, UUID eventId, UUID correlationId) {
+        rest.post()
+                .uri(url)
+                .header("X-Internal-Api-Key", integrations.getInternalApiKey())
+                .header("X-Callback-Event-Id", eventId.toString())
+                .header("X-Correlation-Id", correlationId.toString())
                 .body(body)
                 .retrieve()
                 .toBodilessEntity();
     }
 
     public void postOnce(String url, Object body, UUID eventId) {
-        rest.post()
-                .uri(url)
-                .header("X-Internal-Api-Key", integrations.getInternalApiKey())
-                .header("X-Callback-Event-Id", eventId.toString())
-                .body(body)
-                .retrieve()
-                .toBodilessEntity();
+        postOnce(url, body, eventId, eventId);
     }
 }

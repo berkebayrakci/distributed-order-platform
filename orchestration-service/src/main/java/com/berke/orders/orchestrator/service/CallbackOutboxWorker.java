@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -26,7 +27,7 @@ public class CallbackOutboxWorker {
     private void deliver(CallbackOutboxDeliveryService.Claim claim) {
         try {
             Object callback = deserialize(claim);
-            callbackClient.postOnce(claim.callbackUrl(), callback, claim.eventId());
+            callbackClient.postOnce(claim.callbackUrl(), callback, claim.eventId(), UUID.fromString(claim.correlationId()));
             if (deliveryService.markDelivered(claim)) {
                 log.info("CRM callback delivered: eventId={}, operationType={}, operationId={}, attempt={}",
                         claim.eventId(), claim.operationType(), claim.operationId(), claim.attemptCount());

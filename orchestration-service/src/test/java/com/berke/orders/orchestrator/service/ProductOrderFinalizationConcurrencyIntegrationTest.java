@@ -50,6 +50,7 @@ class ProductOrderFinalizationConcurrencyIntegrationTest {
         orderRepository.saveAndFlush(ProductOrder.builder()
                 .orderId(81L)
                 .customerId("customer-1")
+                .correlationId(java.util.UUID.randomUUID())
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
                 .status(OrderStatus.IN_PROGRESS)
                 .build());

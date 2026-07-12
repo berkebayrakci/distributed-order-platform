@@ -7,12 +7,17 @@ import com.berke.orders.orchestrator.model.OrderStatus;
 import com.berke.orders.orchestrator.model.ProductOrder;
 import com.berke.orders.orchestrator.repo.CallbackOutboxRepository;
 import com.berke.orders.orchestrator.repo.ProductOrderRepository;
+import com.berke.orders.orchestrator.repo.ProcessedEventRepository;
+import com.berke.orders.orchestrator.dto.OrchestratorDtos.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
+import java.time.Instant;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -35,6 +40,7 @@ class ProductOrderFinalizationServiceTest {
         var order = ProductOrder.builder()
                 .orderId(42L)
                 .customerId("customer-1")
+                .correlationId(UUID.randomUUID())
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
                 .status(OrderStatus.FINALIZING)
                 .build();
@@ -71,6 +77,7 @@ class ProductOrderFinalizationServiceTest {
                 orderRepository, outboxRepository, properties, objectMapper);
         var order = ProductOrder.builder()
                 .orderId(43L)
+                .correlationId(UUID.randomUUID())
                 .crmCallbackUrl("http://crm-service/api/orders/callback")
                 .status(OrderStatus.FINALIZING)
                 .build();
@@ -112,5 +119,33 @@ class ProductOrderFinalizationServiceTest {
 
         assertTrue(service.claim(44L));
         org.junit.jupiter.api.Assertions.assertFalse(service.claim(44L));
+    }
+
+    @Test
+    void resultEventIsRecordedWithTerminalStateAndOutbox() {
+        var orderRepository = mock(ProductOrderRepository.class);
+        var outboxRepository = mock(CallbackOutboxRepository.class);
+        var processedRepository = mock(ProcessedEventRepository.class);
+        var correlationId = UUID.randomUUID();
+        var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
+                UUID.randomUUID(), "subscriber-service", Instant.now(),
+                new ProductResult(45L, "customer-1", true, null, List.of()));
+        var order = ProductOrder.builder().orderId(45L).customerId("customer-1")
+                .correlationId(correlationId).crmCallbackUrl("http://crm/api/orders/callback")
+                .status(OrderStatus.FINALIZING).build();
+        when(orderRepository.completeFinalization(45L, 9002L,
+                OrderStatus.FINALIZING, OrderStatus.COMPLETED)).thenReturn(1);
+        when(orderRepository.findById(45L)).thenReturn(Optional.of(order));
+        when(processedRepository.insertIfAbsent("orchestrator-product-result", event.eventId(),
+                event.eventType(), event.eventVersion(), correlationId)).thenReturn(1);
+        var service = new ProductOrderFinalizationService(orderRepository, outboxRepository,
+                new CallbackOutboxProperties(), new ObjectMapper(), processedRepository);
+
+        assertTrue(service.complete(45L, 9002L, event));
+
+        verify(processedRepository).insertIfAbsent("orchestrator-product-result", event.eventId(),
+                event.eventType(), event.eventVersion(), correlationId);
+        verify(outboxRepository).save(org.mockito.ArgumentMatchers.argThat(
+                row -> correlationId.toString().equals(row.getCorrelationId())));
     }
 }

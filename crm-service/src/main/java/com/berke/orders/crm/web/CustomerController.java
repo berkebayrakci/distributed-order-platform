@@ -16,8 +16,9 @@ public class CustomerController {
     private final CrmCustomerService service;
 
     @PostMapping
-    public Object create(@Valid @RequestBody CreateCustomerRequest request) {
-        return service.create(request);
+    public Object create(@Valid @RequestBody CreateCustomerRequest request,
+                         @RequestHeader(value = "X-Correlation-Id", required = false) UUID correlationId) {
+        return service.create(request, correlationId == null ? UUID.randomUUID() : correlationId);
     }
 
     @GetMapping("/{customerId}")
@@ -33,6 +34,7 @@ public class CustomerController {
     @PostMapping("/callback")
     public void callback(
             @RequestHeader("X-Callback-Event-Id") UUID eventId,
+            @RequestHeader("X-Correlation-Id") UUID correlationId,
             @Valid @RequestBody CustomerCallback request
     ) {
         service.callback(eventId, request);
