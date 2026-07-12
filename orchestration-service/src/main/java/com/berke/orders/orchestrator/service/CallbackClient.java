@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class CallbackClient {
@@ -20,6 +22,16 @@ public class CallbackClient {
         rest.post()
                 .uri(url)
                 .header("X-Internal-Api-Key", integrations.getInternalApiKey())
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    public void postOnce(String url, Object body, UUID eventId) {
+        rest.post()
+                .uri(url)
+                .header("X-Internal-Api-Key", integrations.getInternalApiKey())
+                .header("X-Callback-Event-Id", eventId.toString())
                 .body(body)
                 .retrieve()
                 .toBodilessEntity();

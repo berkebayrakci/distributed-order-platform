@@ -7,6 +7,7 @@ import com.berke.orders.orchestrator.repo.ProductOrderRepository;
 import com.berke.orders.orchestrator.service.OrchestratorService;
 import com.berke.orders.orchestrator.service.TraceLogService;
 import com.berke.orders.orchestrator.service.CallbackClient;
+import com.berke.orders.orchestrator.service.ProductOrderFinalizationService;
 import lombok.RequiredArgsConstructor;
 import org.apache.camel.builder.RouteBuilder;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,7 @@ public class OrchestrationRoutes extends RouteBuilder {
     private final CustomerRequestRepository customerRepo;
     private final IntegrationProperties integrations;
     private final CallbackClient callbackClient;
+    private final ProductOrderFinalizationService productOrderFinalizationService;
     private final RestClient rest = RestClient.builder().build();
 
     @Override
@@ -172,27 +174,17 @@ public class OrchestrationRoutes extends RouteBuilder {
     }
 
     private void completeOrder(Long orderId, Long universalProductKey) {
-        var order = orderRepo.findById(orderId).orElseThrow();
-        if (!"IN_PROGRESS".equals(order.getStatus())) return;
-        order.setStatus("COMPLETED");
-        order.setUniversalProductKey(universalProductKey);
-        orderRepo.save(order);
-
-        var callback = new ProductOrderCallback(orderId, "COMPLETED", null);
-        callbackClient.post(order.getCrmCallbackUrl(), callback);
-        log.log(orderId, "Response to CRM", "END", "SUCCESS", null, callback, null);
+        if (productOrderFinalizationService.complete(orderId, universalProductKey)) {
+            log.log(orderId, "CRM callback queued", "END", "SUCCESS", null,
+                    new ProductOrderCallback(orderId, "COMPLETED", null), null);
+        }
     }
 
     private void failOrder(Long orderId, String error) {
-        var order = orderRepo.findById(orderId).orElseThrow();
-        if (!"IN_PROGRESS".equals(order.getStatus())) return;
-        order.setStatus("FAILED");
-        order.setErrorMessage(error);
-        orderRepo.save(order);
-
-        var callback = new ProductOrderCallback(orderId, "FAILED", error);
-        callbackClient.post(order.getCrmCallbackUrl(), callback);
-        log.log(orderId, "Response to CRM", "END", "FAILED", null, callback, error);
+        if (productOrderFinalizationService.fail(orderId, error)) {
+            log.log(orderId, "CRM callback queued", "END", "FAILED", null,
+                    new ProductOrderCallback(orderId, "FAILED", error), error);
+        }
     }
 
     private void completeCustomer(Long requestId) {

@@ -237,7 +237,9 @@ The architecture is designed around asynchronous processing and decoupled commun
 
 7. Orchestrator stores the runtime mapping and final state
 
-8. CRM receives an authenticated, retried callback
+8. Orchestrator atomically stores the terminal order and a durable callback outbox record
+
+9. The callback worker delivers the authenticated CRM callback with bounded retries
 ```
 
 ---
@@ -324,7 +326,7 @@ Planned enterprise features:
 
 - JWT authentication
 - Kubernetes deployment
-- Transactional outbox/inbox delivery
+- Inbox deduplication for asynchronous consumers
 - Prometheus + Grafana monitoring
 - Distributed tracing
 - Circuit breakers

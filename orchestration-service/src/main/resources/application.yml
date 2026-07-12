@@ -13,6 +13,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  flyway:
+    enabled: true
+    default-schema: orchestrator
+    baseline-on-migrate: true
+    baseline-version: 0
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -23,6 +28,14 @@ integrations:
   subscriber-base-url: ${SUBSCRIBER_BASE_URL:http://localhost:8083}
   crm-base-url: ${CRM_BASE_URL:http://localhost:8081}
   internal-api-key: ${INTERNAL_API_KEY:local-development-key}
+callback-outbox:
+  poll-interval: ${CALLBACK_OUTBOX_POLL_INTERVAL:1s}
+  batch-size: ${CALLBACK_OUTBOX_BATCH_SIZE:20}
+  max-attempts: ${CALLBACK_OUTBOX_MAX_ATTEMPTS:6}
+  initial-backoff: ${CALLBACK_OUTBOX_INITIAL_BACKOFF:1s}
+  backoff-multiplier: ${CALLBACK_OUTBOX_BACKOFF_MULTIPLIER:2.0}
+  max-backoff: ${CALLBACK_OUTBOX_MAX_BACKOFF:1m}
+  processing-timeout: ${CALLBACK_OUTBOX_PROCESSING_TIMEOUT:2m}
 logging:
   level:
     com.berke.orders: DEBUG
