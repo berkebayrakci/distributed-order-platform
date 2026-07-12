@@ -2,6 +2,7 @@ package com.berke.orders.subscriber.service;
 
 import com.berke.orders.subscriber.dto.SubscriberDtos.*;
 import com.berke.orders.subscriber.model.CustomerProduct;
+import com.berke.orders.subscriber.model.ProductLifecycleStatus;
 import com.berke.orders.subscriber.repo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,7 +50,7 @@ public class ProductConsumer {
             for (var item : cmd.items()) {
                 String targetRef = targetRef(cmd.orderId(), item.sourceItemRef());
                 var lifecycle = lifecycleCalculator.resolve(item);
-                productRepo.save(CustomerProduct.builder()
+                var product = CustomerProduct.builder()
                         .customerId(cmd.customerId())
                         .targetProductCode(item.targetProductCode())
                         .targetItemRef(targetRef)
@@ -58,10 +59,10 @@ public class ProductConsumer {
                         .validityType(item.validityType())
                         .validityAmount(item.validityAmount())
                         .validityUnit(item.validityUnit())
-                        .activatedAt(lifecycle.activatedAt())
-                        .expiresAt(lifecycle.expiresAt())
-                        .active(true)
-                        .build());
+                        .status(ProductLifecycleStatus.PENDING)
+                        .build();
+                product.activate(cmd.orderId(), lifecycle.activatedAt(), lifecycle.expiresAt());
+                productRepo.save(product);
                 result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
             }
             productRepo.flush();
@@ -130,9 +131,11 @@ public class ProductConsumer {
         long c = cmd.items().stream().filter(i -> i.productType().equals("CAMPAIGN")).count();
         if (t > 1) throw new IllegalArgumentException("Subscriber validation failed: only 1 tariff per order");
         if (c > 1) throw new IllegalArgumentException("Subscriber validation failed: only 1 campaign per order");
-        if (t == 1 && productRepo.existsByCustomerIdAndProductTypeAndActiveTrue(cmd.customerId(), "TARIFF"))
+        if (t == 1 && productRepo.existsByCustomerIdAndProductTypeAndStatus(
+                cmd.customerId(), "TARIFF", ProductLifecycleStatus.ACTIVE))
             throw new IllegalArgumentException("Subscriber validation failed: customer already has active tariff");
-        if (c == 1 && productRepo.existsByCustomerIdAndProductTypeAndActiveTrue(cmd.customerId(), "CAMPAIGN"))
+        if (c == 1 && productRepo.existsByCustomerIdAndProductTypeAndStatus(
+                cmd.customerId(), "CAMPAIGN", ProductLifecycleStatus.ACTIVE))
             throw new IllegalArgumentException("Subscriber validation failed: customer already has active campaign");
     }
 }

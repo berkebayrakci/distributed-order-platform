@@ -2,6 +2,7 @@ package com.berke.orders.subscriber.service;
 
 import com.berke.orders.subscriber.dto.SubscriberDtos.*;
 import com.berke.orders.subscriber.model.CustomerProduct;
+import com.berke.orders.subscriber.model.ProductLifecycleStatus;
 import com.berke.orders.subscriber.repo.CustomerProductRepository;
 import com.berke.orders.subscriber.repo.CustomerRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -62,6 +63,8 @@ class ProductConsumerTest {
         assertTrue(product.getValue().getTargetItemRef().startsWith("SUBITEM-77-"));
         assertEquals(1, product.getValue().getProductVersion());
         assertEquals("FIXED_DURATION", product.getValue().getValidityType());
+        assertEquals(ProductLifecycleStatus.ACTIVE, product.getValue().getStatus());
+        assertEquals(77L, product.getValue().getActivationOrderId());
         assertEquals(activationTime, product.getValue().getActivatedAt());
         assertEquals(Instant.parse("2024-04-30T10:15:30Z"), product.getValue().getExpiresAt());
     }
@@ -72,7 +75,8 @@ class ProductConsumerTest {
                 .targetItemRef("placeholder").productType("ADDON").productVersion(1)
                 .validityType("FIXED_DURATION").validityAmount(3).validityUnit("MONTHS")
                 .activatedAt(Instant.parse("2023-01-31T10:15:30Z"))
-                .expiresAt(Instant.parse("2023-04-30T10:15:30Z")).active(true).build();
+                .expiresAt(Instant.parse("2023-04-30T10:15:30Z"))
+                .status(ProductLifecycleStatus.ACTIVE).activationOrderId(77L).build();
         when(productRepo.findByTargetItemRef(anyString())).thenReturn(Optional.of(existing));
         var command = new ProductCommand(77L, "customer-1", List.of(
                 addonItem()
