@@ -18,6 +18,8 @@ public class OrchestratorDtos {
                                             ProductOrderAction action,
                                             List<@Valid ProductRequest> products,
                                             Long productInstanceId,
+                                            Long existingProductInstanceId,
+                                            String newProductCode,
                                             String reason) {
         public CreateProductOrderRequest {
             if (action == null) action = ProductOrderAction.ADD;
@@ -41,7 +43,8 @@ public class OrchestratorDtos {
     }
 
     public record ProductCommand(Long orderId, String customerId, ProductOrderAction action,
-                                 Long productInstanceId, String reason, List<ProductCommandItem> items) {
+                                 Long productInstanceId, Long existingProductInstanceId,
+                                 String reason, List<ProductCommandItem> items) {
     }
 
     public record ProductCommandEvent(UUID eventId, String eventType, int eventVersion, UUID correlationId,
@@ -54,7 +57,8 @@ public class OrchestratorDtos {
     }
 
     public record ProductResult(Long orderId, String customerId, ProductOrderAction action,
-                                Long productInstanceId, boolean success, String errorMessage,
+                                Long productInstanceId, Long existingProductInstanceId,
+                                boolean success, String errorMessage,
                                 List<ProductResultItem> items) {
     }
 

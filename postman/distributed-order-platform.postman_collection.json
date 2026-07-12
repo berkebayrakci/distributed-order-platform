@@ -16,6 +16,8 @@
     { "key": "orderId", "value": "1112" },
     { "key": "operationId", "value": "1112" },
     { "key": "productInstanceId", "value": "1" },
+    { "key": "existingTariffInstanceId", "value": "1" },
+    { "key": "newTariffProductCode", "value": "1823" },
     { "key": "universalProductKey", "value": "1112" }
   ],
   "item": [
@@ -118,6 +120,31 @@
             },
             "url": "{{crmBaseUrl}}/api/orders",
             "description": "Set productInstanceId to an ACTIVE ADDON instance. Repeat the status request until COMPLETED or FAILED."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Accepted', () => pm.expect(pm.response.code).to.be.below(300));",
+              "if (pm.response.code < 300) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('orderId', body.orderId);",
+              "  pm.collectionVariables.set('operationId', body.orderId);",
+              "}"
+            ] }
+          }]
+        },
+        {
+          "name": "8. Change Active Tariff",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"action\": \"CHANGE\",\n  \"existingProductInstanceId\": {{existingTariffInstanceId}},\n  \"newProductCode\": \"{{newTariffProductCode}}\",\n  \"reason\": \"CUSTOMER_REQUEST\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{crmBaseUrl}}/api/orders",
+            "description": "One business operation: the old ACTIVE tariff is terminated and the replacement becomes ACTIVE atomically."
           },
           "event": [{
             "listen": "test",

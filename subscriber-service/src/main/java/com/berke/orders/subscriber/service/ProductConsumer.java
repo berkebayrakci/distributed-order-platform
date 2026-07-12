@@ -29,6 +29,7 @@ public class ProductConsumer {
     private final InboxService inbox;
     private final ProductLifecycleCalculator lifecycleCalculator;
     private final ProductRemovalService productRemovalService;
+    private final TariffChangeService tariffChangeService;
     private static final String CONSUMER = "subscriber-product-command";
 
     @RabbitListener(queues = "subscriber.product.command.queue")
@@ -36,23 +37,38 @@ public class ProductConsumer {
     public void consume(ProductCommandEvent event) {
         validateEnvelope(event);
         ProductCommand cmd = event.payload();
+        ProductOrderAction action = commandAction(cmd, event.eventVersion());
+        validateActionVersion(action, event.eventVersion());
         log.info("Subscriber service received product order {}", cmd.orderId());
         if (!inbox.begin(CONSUMER, event.eventId(), event.eventType(), event.eventVersion(), event.correlationId())) {
             publishAfterCommit(inbox.replay(CONSUMER, event.eventId(), ProductResultEvent.class));
             return;
         }
         try {
-            ProductOrderAction action = commandAction(cmd, event.eventVersion());
             if (action == ProductOrderAction.REMOVE) {
                 productRemovalService.remove(cmd.orderId(), cmd.customerId(), cmd.productInstanceId(), cmd.reason());
                 finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
-                        cmd.productInstanceId(), true, null, List.of()));
+                        cmd.productInstanceId(), null, true, null, List.of()));
+                return;
+            }
+            if (action == ProductOrderAction.CHANGE) {
+                if (cmd.items() == null || cmd.items().size() != 1) {
+                    throw new IllegalArgumentException("CHANGE requires exactly one replacement tariff item");
+                }
+                var item = cmd.items().getFirst();
+                String targetRef = targetRef(cmd.orderId(), item.sourceItemRef());
+                tariffChangeService.change(cmd.orderId(), cmd.customerId(), cmd.existingProductInstanceId(),
+                        cmd.reason(), item, targetRef);
+                var resultItem = new ProductResultItem(item.sourceProductCode(), item.targetProductCode(),
+                        item.sourceItemRef(), targetRef, item.productType());
+                finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
+                        null, cmd.existingProductInstanceId(), true, null, List.of(resultItem)));
                 return;
             }
             List<ProductResultItem> replay = replayResult(cmd);
             if (replay != null) {
                 finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
-                        null, true, null, replay));
+                        null, null, true, null, replay));
                 return;
             }
             validate(cmd);
@@ -77,12 +93,12 @@ public class ProductConsumer {
             }
             productRepo.flush();
             finish(event, new ProductResult(cmd.orderId(), cmd.customerId(), action,
-                    null, true, null, result));
+                    null, null, true, null, result));
         } catch (IllegalArgumentException e) {
             log.error("Subscriber product order failed {}", cmd.orderId(), e);
             finish(event, new ProductResult(cmd.orderId(), cmd.customerId(),
-                    commandAction(cmd, event.eventVersion()), cmd.productInstanceId(),
-                    false, e.getMessage(), List.of()));
+                    action, cmd.productInstanceId(),
+                    cmd.existingProductInstanceId(), false, e.getMessage(), List.of()));
         }
     }
 
@@ -132,7 +148,7 @@ public class ProductConsumer {
                 || event.occurredAt() == null || event.payload() == null || !"ProductCommand".equals(event.eventType())) {
             throw new UnsupportedEventException("Malformed or unsupported ProductCommand envelope");
         }
-        if (event.eventVersion() != 1 && event.eventVersion() != 2) {
+        if (event.eventVersion() != 1 && event.eventVersion() != 2 && event.eventVersion() != 3) {
             throw new UnsupportedEventException("Unsupported ProductCommand version: " + event.eventVersion());
         }
     }
@@ -140,7 +156,17 @@ public class ProductConsumer {
     private ProductOrderAction commandAction(ProductCommand command, int eventVersion) {
         if (command.action() != null) return command.action();
         if (eventVersion == 1) return ProductOrderAction.ADD;
-        throw new IllegalArgumentException("Product command has no order action");
+        throw new UnsupportedEventException("Product command has no order action");
+    }
+
+    private void validateActionVersion(ProductOrderAction action, int eventVersion) {
+        boolean valid = (eventVersion == 1 && action == ProductOrderAction.ADD)
+                || (eventVersion == 2 && action == ProductOrderAction.REMOVE)
+                || (eventVersion == 3 && action == ProductOrderAction.CHANGE);
+        if (!valid) {
+            throw new UnsupportedEventException(
+                    "Product command action " + action + " is invalid for version " + eventVersion);
+        }
     }
 
     private void validate(ProductCommand cmd) {

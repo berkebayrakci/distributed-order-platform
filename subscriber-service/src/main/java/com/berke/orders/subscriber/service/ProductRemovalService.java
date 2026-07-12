@@ -23,7 +23,7 @@ public class ProductRemovalService {
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public void remove(Long orderId, String customerId, Long productInstanceId, String reason) {
         if (orderId == null || orderId <= 0) {
             throw new IllegalArgumentException("Removal order ID must be positive");

@@ -104,13 +104,23 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
 
                     log.log(orderId, correlationId, "Request from CRM", "START", "SUCCESS", req, null, null);
 
-                    List<ProductCommandItem> items = req.action() == ProductOrderAction.ADD
-                            ? resolveProducts(orderId, correlationId, req.products())
-                            : List.of();
+                    List<ProductRequest> requestedProducts = switch (req.action()) {
+                        case ADD -> req.products();
+                        case REMOVE -> List.of();
+                        case CHANGE -> List.of(new ProductRequest(
+                                req.newProductCode(), "CHANGE-" + orderId, "TARIFF"));
+                    };
+                    List<ProductCommandItem> items = requestedProducts.isEmpty()
+                            ? List.of()
+                            : resolveProducts(orderId, correlationId, requestedProducts);
 
                     var command = new ProductCommand(orderId, req.customerId(), req.action(),
-                            req.productInstanceId(), req.reason(), items);
-                    int eventVersion = req.action() == ProductOrderAction.REMOVE ? 2 : 1;
+                            req.productInstanceId(), req.existingProductInstanceId(), req.reason(), items);
+                    int eventVersion = switch (req.action()) {
+                        case ADD -> 1;
+                        case REMOVE -> 2;
+                        case CHANGE -> 3;
+                    };
                     var event = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", eventVersion, correlationId,
                             env.causationId(), "orchestration-service", Instant.now(), command);
                     log.log(orderId, correlationId, "Request to Subscriber", "START", "SUCCESS", event, null, null);
@@ -262,9 +272,9 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         if (!expectedType.equals(eventType)) {
             throw new ProtocolFailureException("Unsupported event type: " + eventType);
         }
-        boolean productV2 = eventVersion == 2
+        boolean supportedProductVersion = (eventVersion == 2 || eventVersion == 3)
                 && ("ProductCommand".equals(expectedType) || "ProductResult".equals(expectedType));
-        if (eventVersion != 1 && !productV2) {
+        if (eventVersion != 1 && !supportedProductVersion) {
             throw new ProtocolFailureException("Unsupported " + eventType + " version: " + eventVersion);
         }
     }
@@ -363,12 +373,20 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
             throw new ProtocolFailureException("Subscriber product result has no order ID");
         }
         ProductOrderAction action = productAction(result.action(), eventVersion);
+        validateProductActionVersion(action, eventVersion);
         if (action == ProductOrderAction.REMOVE
                 && (result.productInstanceId() == null || result.productInstanceId() <= 0)) {
             throw new ProtocolFailureException("REMOVE result has no valid product instance ID");
         }
-        if (action == ProductOrderAction.ADD && result.productInstanceId() != null) {
-            throw new ProtocolFailureException("ADD result unexpectedly contains a product instance ID");
+        if (action != ProductOrderAction.REMOVE && result.productInstanceId() != null) {
+            throw new ProtocolFailureException(action + " result unexpectedly contains a removed product instance ID");
+        }
+        if (action == ProductOrderAction.CHANGE
+                && (result.existingProductInstanceId() == null || result.existingProductInstanceId() <= 0)) {
+            throw new ProtocolFailureException("CHANGE result has no valid existing tariff instance ID");
+        }
+        if (action != ProductOrderAction.CHANGE && result.existingProductInstanceId() != null) {
+            throw new ProtocolFailureException(action + " result unexpectedly contains an existing tariff instance ID");
         }
         if (!result.success()) {
             if (isBlank(result.errorMessage())) {
@@ -379,11 +397,15 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         if (result.items() == null) {
             throw new ProtocolFailureException("Successful subscriber product result has no items collection");
         }
-        if (action == ProductOrderAction.ADD && result.items().isEmpty()) {
+        if ((action == ProductOrderAction.ADD || action == ProductOrderAction.CHANGE) && result.items().isEmpty()) {
             throw new ProtocolFailureException("Successful subscriber product result has no items");
         }
         if (action == ProductOrderAction.REMOVE && !result.items().isEmpty()) {
             throw new ProtocolFailureException("Successful REMOVE result must not contain activation mapping items");
+        }
+        if (action == ProductOrderAction.CHANGE
+                && (result.items().size() != 1 || !"TARIFF".equals(result.items().getFirst().productType()))) {
+            throw new ProtocolFailureException("Successful CHANGE result must contain exactly one tariff item");
         }
 
         var sourceReferences = new HashSet<String>();
@@ -410,6 +432,7 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         ProductOrderAction action = productAction(result.action(), eventVersion);
         if (order.getAction() != action
                 || !java.util.Objects.equals(order.getProductInstanceId(), result.productInstanceId())
+                || !java.util.Objects.equals(order.getExistingProductInstanceId(), result.existingProductInstanceId())
                 || !order.getCustomerId().equals(result.customerId())) {
             throw new ProtocolFailureException("Subscriber product result does not match the stored order identity");
         }
@@ -419,6 +442,16 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         if (action != null) return action;
         if (eventVersion == 1) return ProductOrderAction.ADD;
         throw new ProtocolFailureException("Product message has no order action");
+    }
+
+    private void validateProductActionVersion(ProductOrderAction action, int eventVersion) {
+        boolean valid = (eventVersion == 1 && action == ProductOrderAction.ADD)
+                || (eventVersion == 2 && action == ProductOrderAction.REMOVE)
+                || (eventVersion == 3 && action == ProductOrderAction.CHANGE);
+        if (!valid) {
+            throw new ProtocolFailureException(
+                    "Product result action " + action + " is invalid for version " + eventVersion);
+        }
     }
 
     private void validateCustomerResult(CustomerResult result) {

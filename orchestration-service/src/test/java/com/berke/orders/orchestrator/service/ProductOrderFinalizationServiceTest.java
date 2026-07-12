@@ -131,7 +131,7 @@ class ProductOrderFinalizationServiceTest {
         var event = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
                 UUID.randomUUID(), "subscriber-service", Instant.now(),
                 new ProductResult(45L, "customer-1", ProductOrderAction.ADD,
-                        null, true, null, List.of()));
+                        null, null, true, null, List.of()));
         var order = ProductOrder.builder().orderId(45L).customerId("customer-1")
                 .correlationId(correlationId).crmCallbackUrl("http://crm/api/orders/callback")
                 .status(OrderStatus.FINALIZING).build();

@@ -6,7 +6,8 @@ import java.time.Instant;
 
 public class SubscriberDtos {
     public record ProductCommand(Long orderId, String customerId, ProductOrderAction action,
-                                 Long productInstanceId, String reason, List<ProductCommandItem> items) {
+                                 Long productInstanceId, Long existingProductInstanceId,
+                                 String reason, List<ProductCommandItem> items) {
     }
 
     public record ProductCommandEvent(UUID eventId, String eventType, int eventVersion, UUID correlationId,
@@ -19,7 +20,8 @@ public class SubscriberDtos {
     }
 
     public record ProductResult(Long orderId, String customerId, ProductOrderAction action,
-                                Long productInstanceId, boolean success, String errorMessage,
+                                Long productInstanceId, Long existingProductInstanceId,
+                                boolean success, String errorMessage,
                                 List<ProductResultItem> items) {
     }
 

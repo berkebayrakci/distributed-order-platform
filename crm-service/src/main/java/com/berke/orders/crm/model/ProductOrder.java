@@ -20,6 +20,8 @@ public class ProductOrder {
     @Column(nullable = false)
     private ProductOrderAction action;
     private Long productInstanceId;
+    private Long existingProductInstanceId;
+    private String newProductCode;
     private String terminationReason;
     private String status;
     @Column(columnDefinition = "text")

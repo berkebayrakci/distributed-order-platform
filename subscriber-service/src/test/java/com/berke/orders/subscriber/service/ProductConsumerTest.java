@@ -30,11 +30,13 @@ class ProductConsumerTest {
     private final RabbitTemplate rabbit = mock(RabbitTemplate.class);
     private final InboxService inbox = mock(InboxService.class);
     private final ProductRemovalService productRemovalService = mock(ProductRemovalService.class);
+    private final TariffChangeService tariffChangeService = mock(TariffChangeService.class);
     private final Instant activationTime = Instant.parse("2024-01-31T10:15:30Z");
     private final ProductLifecycleCalculator lifecycleCalculator =
             new ProductLifecycleCalculator(Clock.fixed(activationTime, ZoneOffset.UTC));
     private final ProductConsumer consumer = new ProductConsumer(
-            customerRepo, productRepo, rabbit, inbox, lifecycleCalculator, productRemovalService);
+            customerRepo, productRepo, rabbit, inbox, lifecycleCalculator,
+            productRemovalService, tariffChangeService);
 
     @AfterEach
     void clearSynchronization() {
@@ -100,7 +102,7 @@ class ProductConsumerTest {
         var stored = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
                 eventId, "subscriber-service", Instant.now(),
                 new ProductResult(77L, "customer-1", ProductOrderAction.ADD,
-                        null, true, null, List.of()));
+                        null, null, true, null, List.of()));
         when(inbox.begin(anyString(), eq(eventId), anyString(), anyInt(), eq(correlationId))).thenReturn(false);
         when(inbox.replay(anyString(), eq(eventId), eq(ProductResultEvent.class))).thenReturn(stored);
         TransactionSynchronizationManager.initSynchronization();
@@ -115,7 +117,7 @@ class ProductConsumerTest {
     @Test
     void removeCommandUsesStandardResultFlow() {
         var command = new ProductCommand(88L, "customer-1", ProductOrderAction.REMOVE,
-                41L, "CUSTOMER_REQUEST", List.of());
+                41L, null, "CUSTOMER_REQUEST", List.of());
         TransactionSynchronizationManager.initSynchronization();
         when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
 
@@ -133,9 +135,34 @@ class ProductConsumerTest {
     }
 
     @Test
+    void changeCommandUsesOneVersionedResultFlow() {
+        var item = new ProductCommandItem("NEW", "NEW-TARIFF", "change-ref", "TARIFF",
+                2, "FIXED_DURATION", 1, "YEARS");
+        var command = new ProductCommand(99L, "customer-1", ProductOrderAction.CHANGE,
+                null, 10L, "TARIFF_CHANGE", List.of(item));
+        TransactionSynchronizationManager.initSynchronization();
+        when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
+
+        consumer.consume(event(command));
+
+        verify(tariffChangeService).change(eq(99L), eq("customer-1"), eq(10L),
+                eq("TARIFF_CHANGE"), eq(item), startsWith("SUBITEM-99-"));
+        var result = ArgumentCaptor.forClass(ProductResultEvent.class);
+        verify(inbox).storeResult(anyString(), any(), result.capture());
+        assertEquals(3, result.getValue().eventVersion());
+        assertEquals(ProductOrderAction.CHANGE, result.getValue().payload().action());
+        assertEquals(10L, result.getValue().payload().existingProductInstanceId());
+        assertNull(result.getValue().payload().productInstanceId());
+        assertTrue(result.getValue().payload().success());
+        assertEquals(1, result.getValue().payload().items().size());
+        assertEquals("TARIFF", result.getValue().payload().items().getFirst().productType());
+        verifyNoInteractions(customerRepo, productRepo);
+    }
+
+    @Test
     void unsupportedVersionIsRejectedBeforeInboxInsertion() {
         var command = addCommand();
-        var envelope = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 3, UUID.randomUUID(),
+        var envelope = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 4, UUID.randomUUID(),
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
 
         assertThrows(UnsupportedEventException.class, () -> consumer.consume(envelope));
@@ -143,15 +170,32 @@ class ProductConsumerTest {
         verifyNoInteractions(inbox, customerRepo, productRepo, rabbit);
     }
 
+    @Test
+    void actionVersionMismatchIsRejectedBeforeInboxInsertion() {
+        var command = new ProductCommand(88L, "customer-1", ProductOrderAction.REMOVE,
+                41L, null, "CUSTOMER_REQUEST", List.of());
+        var envelope = new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 3, UUID.randomUUID(),
+                UUID.randomUUID(), "orchestration-service", Instant.now(), command);
+
+        assertThrows(UnsupportedEventException.class, () -> consumer.consume(envelope));
+
+        verifyNoInteractions(inbox, customerRepo, productRepo, rabbit,
+                productRemovalService, tariffChangeService);
+    }
+
     private ProductCommandEvent event(ProductCommand command) {
-        int version = command.action() == ProductOrderAction.REMOVE ? 2 : 1;
+        int version = switch (command.action()) {
+            case ADD -> 1;
+            case REMOVE -> 2;
+            case CHANGE -> 3;
+        };
         return new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", version, UUID.randomUUID(),
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
     }
 
     private ProductCommand addCommand() {
         return new ProductCommand(77L, "customer-1", ProductOrderAction.ADD,
-                null, null, List.of(addonItem()));
+                null, null, null, List.of(addonItem()));
     }
 
     private ProductCommandItem addonItem() {

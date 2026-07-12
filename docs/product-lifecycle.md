@@ -38,3 +38,18 @@ one add-on product instance and includes a mandatory reason. Charging transition
 A replay of the same removal order is successful without applying the transition again. A different order targeting an
 already terminated instance fails deterministically. Normal removal does not support tariffs, campaigns, suspended
 instances, or administrative forced termination.
+
+## Tariff change
+
+Tariff replacement is one `CHANGE` order, not a REMOVE followed by an ADD. CRM supplies the active tariff instance ID,
+the new Catalog product code, and a reason. Orchestration resolves the replacement and sends one version 3 command with
+the original order ID and correlation ID.
+
+Charging calculates and validates the replacement lifecycle before locking the existing tariff. It then terminates and
+flushes the old tariff before inserting the active replacement. Both writes and the inbox result share one transaction.
+The PostgreSQL partial unique index `ux_subscriber_one_active_tariff` prevents two `ACTIVE` tariffs for one customer.
+
+Business rejection occurs before either product is changed and produces a failed order result. If replacement persistence
+or another infrastructure operation fails after the old tariff update, the entire transaction rolls back, restoring the
+old tariff as `ACTIVE`; RabbitMQ applies its bounded retry/DLQ policy. A replay of the same successful order returns the
+persisted replacement without repeating either lifecycle transition.

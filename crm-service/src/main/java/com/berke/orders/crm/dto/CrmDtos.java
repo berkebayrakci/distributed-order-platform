@@ -18,6 +18,8 @@ public class CrmDtos {
                                             ProductOrderAction action,
                                             List<@Valid ProductRequest> products,
                                             Long productInstanceId,
+                                            Long existingProductInstanceId,
+                                            String newProductCode,
                                             String reason) {
         public CreateProductOrderRequest {
             if (action == null) action = ProductOrderAction.ADD;
@@ -27,6 +29,7 @@ public class CrmDtos {
 
     public record OrchestratorProductOrderRequest(String customerId, ProductOrderAction action,
                                                    List<ProductRequest> products, Long productInstanceId,
+                                                   Long existingProductInstanceId, String newProductCode,
                                                    String reason) {
     }
 

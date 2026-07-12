@@ -37,6 +37,8 @@ public class CrmOrderService {
                 req.action(),
                 req.products(),
                 req.productInstanceId(),
+                req.existingProductInstanceId(),
+                req.newProductCode(),
                 req.reason()
         );
 
@@ -54,6 +56,8 @@ public class CrmOrderService {
                 .customerId(req.customerId())
                 .action(req.action())
                 .productInstanceId(req.productInstanceId())
+                .existingProductInstanceId(req.existingProductInstanceId())
+                .newProductCode(req.newProductCode())
                 .terminationReason(req.reason())
                 .status(res.status())
                 .build());
@@ -106,6 +110,21 @@ public class CrmOrderService {
     }
 
     private void validate(CreateProductOrderRequest request) {
+        if (request.action() == ProductOrderAction.CHANGE) {
+            if (request.existingProductInstanceId() == null || request.existingProductInstanceId() <= 0) {
+                throw new IllegalArgumentException("CRM validation failed: CHANGE requires a positive existingProductInstanceId");
+            }
+            if (request.newProductCode() == null || request.newProductCode().isBlank()) {
+                throw new IllegalArgumentException("CRM validation failed: CHANGE requires a newProductCode");
+            }
+            if (request.reason() == null || request.reason().isBlank()) {
+                throw new IllegalArgumentException("CRM validation failed: CHANGE requires a reason");
+            }
+            if (request.productInstanceId() != null || !request.products().isEmpty()) {
+                throw new IllegalArgumentException("CRM validation failed: CHANGE must use its dedicated tariff fields");
+            }
+            return;
+        }
         if (request.action() == ProductOrderAction.REMOVE) {
             if (request.productInstanceId() == null || request.productInstanceId() <= 0) {
                 throw new IllegalArgumentException("CRM validation failed: REMOVE requires a positive productInstanceId");
@@ -113,12 +132,14 @@ public class CrmOrderService {
             if (request.reason() == null || request.reason().isBlank()) {
                 throw new IllegalArgumentException("CRM validation failed: REMOVE requires a termination reason");
             }
-            if (!request.products().isEmpty()) {
+            if (!request.products().isEmpty() || request.existingProductInstanceId() != null
+                    || request.newProductCode() != null) {
                 throw new IllegalArgumentException("CRM validation failed: REMOVE must not contain products");
             }
             return;
         }
-        if (request.productInstanceId() != null || request.reason() != null) {
+        if (request.productInstanceId() != null || request.existingProductInstanceId() != null
+                || request.newProductCode() != null || request.reason() != null) {
             throw new IllegalArgumentException("CRM validation failed: ADD must not contain removal fields");
         }
         List<ProductRequest> products = request.products();

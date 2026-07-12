@@ -27,7 +27,7 @@ class OrchestrationResultValidationTest {
     void malformedResultWithoutOrderIdIsProtocolFailure() {
         var routes = routes();
         var result = new ProductResult(null, "customer-1", ProductOrderAction.ADD,
-                null, true, null, List.of());
+                null, null, true, null, List.of());
 
         assertThrows(ProtocolFailureException.class,
                 () -> ReflectionTestUtils.invokeMethod(routes, "validateProductResult", result, 2));
@@ -39,7 +39,7 @@ class OrchestrationResultValidationTest {
         var item = new ProductResultItem(
                 "source", "target", "source-ref", "target-ref", "UNSUPPORTED");
         var result = new ProductResult(42L, "customer-1", ProductOrderAction.ADD,
-                null, true, null, List.of(item));
+                null, null, true, null, List.of(item));
 
         assertThrows(ProtocolFailureException.class,
                 () -> ReflectionTestUtils.invokeMethod(routes, "validateProductResult", result, 2));
@@ -50,17 +50,28 @@ class OrchestrationResultValidationTest {
         var routes = routes();
 
         assertThrows(ProtocolFailureException.class, () -> ReflectionTestUtils.invokeMethod(routes,
-                "validateEnvelope", UUID.randomUUID(), "ProductResult", 3, UUID.randomUUID(),
+                "validateEnvelope", UUID.randomUUID(), "ProductResult", 4, UUID.randomUUID(),
                 UUID.randomUUID(), "subscriber-service", Instant.now(), new Object(), "ProductResult"));
     }
 
     @Test
     void successfulRemoveResultDoesNotRequireActivationMappingItems() {
         var result = new ProductResult(42L, "customer-1", ProductOrderAction.REMOVE,
-                41L, true, null, List.of());
+                41L, null, true, null, List.of());
 
         assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
                 routes(), "validateProductResult", result, 2));
+    }
+
+    @Test
+    void successfulChangeResultRequiresOneReplacementTariff() {
+        var item = new ProductResultItem(
+                "new-source", "new-target", "change-ref", "replacement-ref", "TARIFF");
+        var result = new ProductResult(42L, "customer-1", ProductOrderAction.CHANGE,
+                null, 10L, true, null, List.of(item));
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                routes(), "validateProductResult", result, 3));
     }
 
     private OrchestrationRoutes routes() {
