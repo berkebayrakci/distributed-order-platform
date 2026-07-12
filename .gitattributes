@@ -1,0 +1,7 @@
+# Keep Unix launchers executable and free of Windows carriage returns.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Keep native Windows launchers in their expected format.
+*.bat text eol=crlf
+*.cmd text eol=crlf
