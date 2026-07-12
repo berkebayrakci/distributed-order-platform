@@ -16,8 +16,8 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USERNAME:order_app}
+    password: ${RABBITMQ_PASSWORD:order_app_dev}
 integrations:
   catalog-base-url: ${CATALOG_BASE_URL:http://localhost:8082}
   subscriber-base-url: ${SUBSCRIBER_BASE_URL:http://localhost:8083}

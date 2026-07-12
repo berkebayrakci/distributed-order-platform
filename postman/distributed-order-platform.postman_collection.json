@@ -1,0 +1,178 @@
+{
+  "info": {
+    "_postman_id": "0f52b414-7d0d-4fc2-a18d-9cba0c8e7f5f",
+    "name": "Distributed Order Platform",
+    "description": "CRM workflows plus authenticated internal diagnostics for the local distributed-order platform.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "crmBaseUrl", "value": "http://localhost:8081" },
+    { "key": "catalogBaseUrl", "value": "http://localhost:8082" },
+    { "key": "subscriberBaseUrl", "value": "http://localhost:8083" },
+    { "key": "orchestratorBaseUrl", "value": "http://localhost:8084" },
+    { "key": "internalApiKey", "value": "local-development-key", "type": "secret" },
+    { "key": "customerId", "value": "CUST9001" },
+    { "key": "customerRequestId", "value": "1111" },
+    { "key": "orderId", "value": "1112" },
+    { "key": "operationId", "value": "1112" },
+    { "key": "universalProductKey", "value": "1112" }
+  ],
+  "item": [
+    {
+      "name": "Workflow - Customer and Order",
+      "description": "Run these requests in order. Customer and order processing are asynchronous, so repeat status requests until COMPLETED or FAILED.",
+      "item": [
+        {
+          "name": "1. Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"firstName\": \"Demo\",\n  \"lastName\": \"Customer\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{crmBaseUrl}}/api/customers"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Accepted', () => pm.expect(pm.response.code).to.be.below(300));",
+              "if (pm.response.code < 300) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('customerRequestId', body.requestId);",
+              "  pm.collectionVariables.set('operationId', body.requestId);",
+              "}"
+            ] }
+          }]
+        },
+        {
+          "name": "2. Get Customer Request Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{crmBaseUrl}}/api/customers/requests/{{customerRequestId}}",
+            "description": "Repeat until status is COMPLETED or FAILED."
+          }
+        },
+        {
+          "name": "3. Get Provisioned Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{crmBaseUrl}}/api/customers/{{customerId}}"
+          }
+        },
+        {
+          "name": "4. Create Product Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"products\": [\n    {\n      \"sourceProductCode\": \"1893\",\n      \"sourceItemRef\": \"REF-9001\",\n      \"productType\": \"TARIFF\"\n    },\n    {\n      \"sourceProductCode\": \"41001\",\n      \"sourceItemRef\": \"REF-9002\",\n      \"productType\": \"ADDON\"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{crmBaseUrl}}/api/orders"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Accepted', () => pm.expect(pm.response.code).to.be.below(300));",
+              "if (pm.response.code < 300) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('orderId', body.orderId);",
+              "  pm.collectionVariables.set('operationId', body.orderId);",
+              "  pm.collectionVariables.set('universalProductKey', body.orderId);",
+              "}"
+            ] }
+          }]
+        },
+        {
+          "name": "5. Get Operation Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{crmBaseUrl}}/api/operations/{{operationId}}",
+            "description": "Repeat until status is COMPLETED or FAILED."
+          }
+        },
+        {
+          "name": "6. Get Local CRM Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{crmBaseUrl}}/api/orders/{{orderId}}/local"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Operation Observability",
+      "item": [
+        {
+          "name": "Get Orchestrator Operation",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Api-Key", "value": "{{internalApiKey}}", "type": "text" }],
+            "url": "{{orchestratorBaseUrl}}/api/orchestrator/operations/{{operationId}}"
+          }
+        },
+        {
+          "name": "Get Interface Logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Api-Key", "value": "{{internalApiKey}}", "type": "text" }],
+            "url": "{{orchestratorBaseUrl}}/api/orchestrator/operations/{{operationId}}/logs"
+          }
+        },
+        {
+          "name": "Get Trace Events",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Api-Key", "value": "{{internalApiKey}}", "type": "text" }],
+            "url": "{{orchestratorBaseUrl}}/api/orchestrator/operations/{{operationId}}/trace-events"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog Internal API",
+      "item": [
+        {
+          "name": "Lookup Product Codes",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Internal-Api-Key", "value": "{{internalApiKey}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceProductCodes\": [\"1893\", \"41001\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{catalogBaseUrl}}/api/catalog/lookup"
+          }
+        },
+        {
+          "name": "Get Runtime Mapping",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Api-Key", "value": "{{internalApiKey}}", "type": "text" }],
+            "url": "{{catalogBaseUrl}}/api/catalog/runtime-mappings/{{universalProductKey}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        { "name": "CRM", "request": { "method": "GET", "header": [], "url": "{{crmBaseUrl}}/actuator/health" } },
+        { "name": "Catalog", "request": { "method": "GET", "header": [], "url": "{{catalogBaseUrl}}/actuator/health" } },
+        { "name": "Subscriber", "request": { "method": "GET", "header": [], "url": "{{subscriberBaseUrl}}/actuator/health" } },
+        { "name": "Orchestrator", "request": { "method": "GET", "header": [], "url": "{{orchestratorBaseUrl}}/actuator/health" } }
+      ]
+    }
+  ]
+}

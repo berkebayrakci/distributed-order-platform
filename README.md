@@ -266,6 +266,25 @@ On first start, PostgreSQL automatically creates the `order_system` schemas, tab
 
 ## Start Backend Services
 
+### Start everything from WSL
+
+```bash
+./start.sh
+```
+
+The script starts PostgreSQL and RabbitMQ, launches all four Spring services,
+waits for their health endpoints, and follows their logs in one terminal.
+Press `Ctrl+C` to stop the application processes. Infrastructure remains
+running by default; use `./start.sh --stop-infra-on-exit` to stop it as well.
+
+To include the UI after running `npm ci` in `crm-ui`:
+
+```bash
+./start.sh --with-ui
+```
+
+### Start services individually
+
 Example:
 
 ```bash
@@ -291,6 +310,11 @@ npm run dev
 ## Configuration
 
 Service URLs, database credentials, RabbitMQ credentials, the allowed UI origin, and the internal API key can be overridden with environment variables. Local defaults are provided for development. Set a strong shared `INTERNAL_API_KEY` outside local development.
+
+## API and Infrastructure Tools
+
+- Import `postman/distributed-order-platform.postman_collection.json` into Postman for the customer, order, observability, catalog, and health workflows.
+- See `docs/operations-cheatsheet.md` for PostgreSQL, RabbitMQ Management UI, CLI, HTTP API, backup, and troubleshooting commands.
 
 ---
 

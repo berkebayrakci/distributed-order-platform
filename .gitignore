@@ -23,6 +23,7 @@ pnpm-debug.log*
 
 # Logs
 *.log
+.run/
 hs_err_pid*
 replay_pid*
 *.hprof

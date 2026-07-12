@@ -16,8 +16,8 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USERNAME:order_app}
+    password: ${RABBITMQ_PASSWORD:order_app_dev}
 integrations:
   orchestrator-base-url: ${ORCHESTRATOR_BASE_URL:http://localhost:8084}
   internal-api-key: ${INTERNAL_API_KEY:local-development-key}
