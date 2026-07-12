@@ -1,0 +1,16 @@
+package com.berke.orders.crm.config;
+
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConfigurationProperties(prefix = "integrations")
+@Getter
+@Setter
+public class IntegrationProperties {
+    private String orchestratorBaseUrl;
+    private String internalApiKey;
+    private String uiOrigin;
+}

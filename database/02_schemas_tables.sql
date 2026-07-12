@@ -24,6 +24,7 @@ CREATE TABLE crm.product_order_item (
     product_type VARCHAR(30) NOT NULL CHECK (product_type IN ('TARIFF','CAMPAIGN','ADDON'))
 );
 CREATE INDEX idx_crm_order_item_order_id ON crm.product_order_item(order_id);
+CREATE UNIQUE INDEX ux_crm_order_item_source_ref ON crm.product_order_item(order_id, source_item_ref);
 
 CREATE TABLE crm.customer_request (
     request_id BIGINT PRIMARY KEY,

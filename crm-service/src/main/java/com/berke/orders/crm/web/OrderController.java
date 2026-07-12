@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
-@CrossOrigin
 public class OrderController {
     private final CrmOrderService orderService;
     private final CrmOperationService operationService;
@@ -33,7 +32,7 @@ public class OrderController {
     }
 
     @PostMapping("/callback")
-    public void callback(@RequestBody ProductOrderCallback request) {
+    public void callback(@Valid @RequestBody ProductOrderCallback request) {
         orderService.callback(request);
     }
 }

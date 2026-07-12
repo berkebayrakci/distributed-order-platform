@@ -1,53 +1,48 @@
 {
-  "users": [
-    {
-      "name": "guest",
-      "password": "guest",
-      "tags": "administrator"
-    }
-  ],
-  "vhosts": [
-    {
-      "name": "/"
-    }
-  ],
-  "permissions": [
-    {
-      "user": "guest",
-      "vhost": "/",
-      "configure": ".*",
-      "write": ".*",
-      "read": ".*"
-    }
-  ],
   "queues": [
     {
       "name": "subscriber.product.command.queue",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
-      "arguments": {}
+      "arguments": {
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "subscriber.product.command.dlq"
+      }
     },
     {
       "name": "subscriber.product.result.queue",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
-      "arguments": {}
+      "arguments": {
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "subscriber.product.result.dlq"
+      }
     },
     {
       "name": "subscriber.customer.command.queue",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
-      "arguments": {}
+      "arguments": {
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "subscriber.customer.command.dlq"
+      }
     },
     {
       "name": "subscriber.customer.result.queue",
       "vhost": "/",
       "durable": true,
       "auto_delete": false,
-      "arguments": {}
-    }
+      "arguments": {
+        "x-dead-letter-exchange": "",
+        "x-dead-letter-routing-key": "subscriber.customer.result.dlq"
+      }
+    },
+    { "name": "subscriber.product.command.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "subscriber.product.result.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "subscriber.customer.command.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "subscriber.customer.result.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} }
   ]
 }

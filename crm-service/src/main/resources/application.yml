@@ -4,9 +4,9 @@ spring:
   application:
     name: crm-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_system?currentSchema=crm
-    username: postgres
-    password: postgres
+    url: ${CRM_DB_URL:jdbc:postgresql://localhost:5432/order_system?currentSchema=crm}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,10 +14,14 @@ spring:
       hibernate:
         format_sql: true
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+integrations:
+  orchestrator-base-url: ${ORCHESTRATOR_BASE_URL:http://localhost:8084}
+  internal-api-key: ${INTERNAL_API_KEY:local-development-key}
+  ui-origin: ${CRM_UI_ORIGIN:http://localhost:5173}
 logging:
   level:
     com.berke.orders: DEBUG

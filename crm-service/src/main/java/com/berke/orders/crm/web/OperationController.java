@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/operations")
 @RequiredArgsConstructor
-@CrossOrigin
 public class OperationController {
     private final CrmOperationService service;
 

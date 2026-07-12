@@ -1,25 +1,49 @@
 # Gradle
 .gradle/
 build/
+!gradle/wrapper/gradle-wrapper.jar
 
 # Node
 node_modules/
 dist/
+.vite/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # IDE
 .idea/
 *.iml
 .vscode/
+.classpath
+.project
+.settings/
 
 # Logs
 *.log
+hs_err_pid*
+replay_pid*
+*.hprof
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Env
+# Local environment and secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local Spring configuration
+application-local.yml
+application-local.yaml
+application-local.properties
 
 # Java
 out/
+*.class

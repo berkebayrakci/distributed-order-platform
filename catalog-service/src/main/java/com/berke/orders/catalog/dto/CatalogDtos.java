@@ -21,7 +21,7 @@ public class CatalogDtos {
     ) {
     }
 
-    public record RuntimeMappingInsertRequest(List<RuntimeMappingInsertItem> items) {
+    public record RuntimeMappingInsertRequest(Long operationId, List<RuntimeMappingInsertItem> items) {
     }
 
     public record RuntimeMappingInsertResponse(Long universalProductKey) {

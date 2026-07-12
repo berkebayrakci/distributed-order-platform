@@ -1,6 +1,7 @@
 package com.berke.orders.subscriber.config;
 
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
@@ -11,22 +12,34 @@ import org.springframework.context.annotation.*;
 public class RabbitConfig {
     @Bean
     public Queue productCommandQueue() {
-        return new Queue("subscriber.product.command.queue", true);
+        return QueueBuilder.durable("subscriber.product.command.queue")
+                .deadLetterExchange("")
+                .deadLetterRoutingKey("subscriber.product.command.dlq")
+                .build();
     }
 
     @Bean
     public Queue productResultQueue() {
-        return new Queue("subscriber.product.result.queue", true);
+        return QueueBuilder.durable("subscriber.product.result.queue")
+                .deadLetterExchange("")
+                .deadLetterRoutingKey("subscriber.product.result.dlq")
+                .build();
     }
 
     @Bean
     public Queue customerCommandQueue() {
-        return new Queue("subscriber.customer.command.queue", true);
+        return QueueBuilder.durable("subscriber.customer.command.queue")
+                .deadLetterExchange("")
+                .deadLetterRoutingKey("subscriber.customer.command.dlq")
+                .build();
     }
 
     @Bean
     public Queue customerResultQueue() {
-        return new Queue("subscriber.customer.result.queue", true);
+        return QueueBuilder.durable("subscriber.customer.result.queue")
+                .deadLetterExchange("")
+                .deadLetterRoutingKey("subscriber.customer.result.dlq")
+                .build();
     }
 
     @Bean

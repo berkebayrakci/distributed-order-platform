@@ -1,6 +1,6 @@
 # Distributed Order Platform
 
-Enterprise-style distributed order orchestration platform built with Spring Boot, RabbitMQ, PostgreSQL, Apache Camel, Docker and React.
+Distributed order orchestration prototype built with Spring Boot, RabbitMQ, PostgreSQL, Apache Camel, Docker and React.
 
 This project simulates real-world enterprise integration architectures where customer orders flow through multiple distributed systems asynchronously.
 
@@ -10,7 +10,7 @@ Instead of a simple CRUD application, the platform focuses on:
 - Asynchronous messaging
 - Runtime ownership mapping
 - Event-driven architecture
-- Failure handling and retries
+- Bounded message retries and dead-letter queues
 - Service-to-service communication
 - Operational tracing and observability
 
@@ -47,20 +47,14 @@ The system processes distributed customer/product orders while maintaining trace
                 |   CRM Service    |
                 |  Spring Boot     |
                 +---------+--------+
-                          |
-                          v
-                +------------------+
-                |   RabbitMQ       |
-                |   Event Queue    |
-                +---------+--------+
-                          |
+                          | HTTP
                           v
                 +------------------+
                 |  Orchestrator    |
                 | Apache Camel ESB |
                 +----+--------+----+
-                     |        |
-                     |        |
+                     |        | RabbitMQ
+                     | HTTP   |
           +----------+        +-----------+
           |                               |
           v                               v
@@ -82,7 +76,7 @@ Responsible for:
 
 - Receiving customer orders
 - Creating order requests
-- Publishing events to RabbitMQ
+- Submitting operations to the orchestrator over authenticated internal HTTP
 - Providing REST APIs for UI interactions
 
 Tech:
@@ -152,13 +146,11 @@ Frontend application for interacting with the platform.
 
 Features:
 - Customer creation
-- Order submission
-- Order monitoring
-- Service interaction visualization
+- Product-order submission
 
 Tech:
 - React
-- TypeScript
+- JavaScript
 
 ---
 
@@ -166,12 +158,12 @@ Tech:
 
 ## Event-Driven Architecture
 
-Services communicate asynchronously using RabbitMQ instead of direct synchronous calls.
+Subscriber commands and results flow asynchronously through durable RabbitMQ queues. Catalog lookups and CRM-to-orchestrator submission use synchronous HTTP.
 
 Benefits:
 - Loose coupling
 - Better scalability
-- Retry capabilities
+- Bounded retry with dead-letter queues
 - Failure isolation
 
 ---
@@ -220,7 +212,7 @@ The architecture is designed around asynchronous processing and decoupled commun
 
 ## Frontend
 - React
-- TypeScript
+- JavaScript
 
 ## Infrastructure
 - Docker
@@ -233,19 +225,19 @@ The architecture is designed around asynchronous processing and decoupled commun
 ```text
 1. Customer submits order from CRM UI
 
-2. CRM Service publishes order event
+2. CRM Service submits the operation to the orchestrator over HTTP
 
-3. RabbitMQ distributes event
+3. Orchestrator validates product mappings through Catalog
 
-4. Orchestrator consumes event
+4. Orchestrator publishes a durable Subscriber command through RabbitMQ
 
-5. Catalog Service maps product definitions
+5. Subscriber provisions the products idempotently
 
-6. Subscriber Service provisions customer
+6. Subscriber publishes the result through RabbitMQ
 
-7. Async response generated
+7. Orchestrator stores the runtime mapping and final state
 
-8. Final order state updated
+8. CRM receives an authenticated, retried callback
 ```
 
 ---
@@ -258,7 +250,7 @@ The architecture is designed around asynchronous processing and decoupled commun
 - Docker
 - Docker Compose
 - Node.js
-- Gradle
+- The repository's Gradle wrapper
 
 ---
 
@@ -267,6 +259,8 @@ The architecture is designed around asynchronous processing and decoupled commun
 ```bash
 docker compose up -d
 ```
+
+On first start, PostgreSQL automatically creates the `order_system` schemas, tables and seed mappings. Existing `pgdata` volumes are not reinitialized; use a migration tool before changing schemas in a persistent environment.
 
 ---
 
@@ -290,9 +284,13 @@ Repeat for:
 
 ```bash
 cd crm-ui
-npm install
+npm ci
 npm run dev
 ```
+
+## Configuration
+
+Service URLs, database credentials, RabbitMQ credentials, the allowed UI origin, and the internal API key can be overridden with environment variables. Local defaults are provided for development. Set a strong shared `INTERNAL_API_KEY` outside local development.
 
 ---
 
@@ -302,7 +300,7 @@ Planned enterprise features:
 
 - JWT authentication
 - Kubernetes deployment
-- Retry queues / DLQ
+- Transactional outbox/inbox delivery
 - Prometheus + Grafana monitoring
 - Distributed tracing
 - Circuit breakers

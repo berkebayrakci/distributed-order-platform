@@ -1,30 +1,36 @@
 package com.berke.orders.crm.service;
 
 import com.berke.orders.crm.dto.CrmDtos.*;
+import com.berke.orders.crm.config.IntegrationProperties;
 import com.berke.orders.crm.model.CustomerRequestEntity;
 import com.berke.orders.crm.repo.CustomerRequestRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class CrmCustomerService {
     private final CustomerRequestRepository repo;
-    private final RestClient restClient = RestClient.builder().baseUrl("http://localhost:8084").build();
+    private final IntegrationProperties integrations;
+    private final RestClient restClient = RestClient.builder().build();
 
+    @Transactional
     public CustomerRequestResponse create(CreateCustomerRequest req) {
         var orchReq = new OrchestratorCustomerRequest(
                 req.customerId(),
                 req.firstName(),
-                req.lastName(),
-                "http://localhost:8081/api/customers/callback"
+                req.lastName()
         );
 
         var res = restClient.post()
-                .uri("/api/orchestrator/customers")
+                .uri(integrations.getOrchestratorBaseUrl() + "/api/orchestrator/customers")
+                .header("X-Internal-Api-Key", integrations.getInternalApiKey())
                 .body(orchReq)
                 .retrieve()
                 .body(CustomerRequestResponse.class);
@@ -40,9 +46,14 @@ public class CrmCustomerService {
         return res;
     }
 
+    @Transactional
     public void callback(CustomerCallback cb) {
         var r = repo.findById(cb.requestId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer request not found: " + cb.requestId()));
+        if (!"IN_PROGRESS".equals(r.getStatus())) {
+            if (r.getStatus().equals(cb.status())) return;
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Customer request is already terminal");
+        }
         r.setStatus(cb.status());
         r.setErrorMessage(cb.errorMessage());
         repo.save(r);
@@ -56,11 +67,14 @@ public class CrmCustomerService {
     public CustomerView getCustomer(String customerId) {
         try {
             return restClient.get()
-                    .uri("/api/orchestrator/customers/{customerId}", customerId)
+                    .uri(integrations.getOrchestratorBaseUrl() + "/api/orchestrator/customers/{customerId}", customerId)
+                    .header("X-Internal-Api-Key", integrations.getInternalApiKey())
                     .retrieve()
                     .body(CustomerView.class);
-        } catch (Exception e) {
+        } catch (HttpClientErrorException.NotFound e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found: " + customerId);
+        } catch (RestClientException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Orchestrator is unavailable", e);
         }
     }
 }

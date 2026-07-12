@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.nio.charset.StandardCharsets;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -25,18 +28,58 @@ public class ProductConsumer {
     public void consume(ProductCommand cmd) {
         log.info("Subscriber service received product order {}", cmd.orderId());
         try {
+            List<ProductResultItem> replay = replayResult(cmd);
+            if (replay != null) {
+                publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), true, null, replay));
+                return;
+            }
             validate(cmd);
             List<ProductResultItem> result = new ArrayList<>();
             for (var item : cmd.items()) {
-                String targetRef = "SUBITEM-" + cmd.orderId() + "-" + UUID.randomUUID().toString().substring(0, 8);
+                String targetRef = targetRef(cmd.orderId(), item.sourceItemRef());
                 productRepo.save(CustomerProduct.builder().customerId(cmd.customerId()).targetProductCode(item.targetProductCode()).targetItemRef(targetRef).productType(item.productType()).active(true).build());
                 result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
             }
-            rabbit.convertAndSend("subscriber.product.result.queue", new ProductResult(cmd.orderId(), cmd.customerId(), true, null, result));
-        } catch (Exception e) {
+            productRepo.flush();
+            publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), true, null, result));
+        } catch (IllegalArgumentException e) {
             log.error("Subscriber product order failed {}", cmd.orderId(), e);
-            rabbit.convertAndSend("subscriber.product.result.queue", new ProductResult(cmd.orderId(), cmd.customerId(), false, e.getMessage(), List.of()));
+            publishAfterCommit(new ProductResult(cmd.orderId(), cmd.customerId(), false, e.getMessage(), List.of()));
         }
+    }
+
+    private List<ProductResultItem> replayResult(ProductCommand cmd) {
+        List<ProductResultItem> result = new ArrayList<>();
+        int existingCount = 0;
+        for (var item : cmd.items()) {
+            String targetRef = targetRef(cmd.orderId(), item.sourceItemRef());
+            var existing = productRepo.findByTargetItemRef(targetRef);
+            if (existing.isPresent()) {
+                existingCount++;
+                result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
+            }
+        }
+        if (existingCount == 0) return null;
+        if (existingCount != cmd.items().size()) return failPartialReplay(cmd.orderId());
+        return result;
+    }
+
+    private List<ProductResultItem> failPartialReplay(Long orderId) {
+        throw new IllegalStateException("Partial persisted state detected for order " + orderId);
+    }
+
+    private String targetRef(Long orderId, String sourceItemRef) {
+        UUID id = UUID.nameUUIDFromBytes((orderId + ":" + sourceItemRef).getBytes(StandardCharsets.UTF_8));
+        return "SUBITEM-" + orderId + "-" + id;
+    }
+
+    private void publishAfterCommit(ProductResult result) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                rabbit.convertAndSend("subscriber.product.result.queue", result);
+            }
+        });
     }
 
     private void validate(ProductCommand cmd) {

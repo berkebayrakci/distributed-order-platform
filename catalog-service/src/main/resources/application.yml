@@ -4,9 +4,9 @@ spring:
   application:
     name: catalog-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_system?currentSchema=catalog
-    username: postgres
-    password: postgres
+    url: ${CATALOG_DB_URL:jdbc:postgresql://localhost:5432/order_system?currentSchema=catalog}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,10 +14,12 @@ spring:
       hibernate:
         format_sql: true
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+integrations:
+  internal-api-key: ${INTERNAL_API_KEY:local-development-key}
 logging:
   level:
     com.berke.orders: DEBUG

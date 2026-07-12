@@ -7,6 +7,7 @@ import com.berke.orders.catalog.repo.InstanceMappingRepository;
 import com.berke.orders.catalog.repo.ProductCodeMappingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 
@@ -16,7 +17,6 @@ import java.util.HashSet;
 public class CatalogController {
     private final ProductCodeMappingRepository catalogRepo;
     private final InstanceMappingRepository instanceRepo;
-    private final CatalogSequenceRepository sequenceRepo;
 
     @PostMapping("/lookup")
     public ProductLookupResponse lookup(@RequestBody ProductLookupRequest req) {
@@ -35,8 +35,19 @@ public class CatalogController {
     }
 
     @PostMapping("/runtime-mappings")
+    @Transactional
     public RuntimeMappingInsertResponse insertRuntimeMapping(@RequestBody RuntimeMappingInsertRequest req) {
-        Long universalProductKey = sequenceRepo.nextUniversalProductKey();
+        if (req.operationId() == null || req.items() == null || req.items().isEmpty()) {
+            throw new IllegalArgumentException("operationId and at least one mapping item are required");
+        }
+        Long universalProductKey = req.operationId();
+        var existing = instanceRepo.findByUniversalProductKeyOrderBySourceItemRef(universalProductKey);
+        if (!existing.isEmpty()) {
+            if (existing.size() != req.items().size()) {
+                throw new IllegalStateException("Operation already has a different runtime mapping payload");
+            }
+            return new RuntimeMappingInsertResponse(universalProductKey);
+        }
 
         for (var item : req.items()) {
             instanceRepo.save(OrderProductInstanceMapping.builder()

@@ -4,9 +4,9 @@ spring:
   application:
     name: subscriber-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_system?currentSchema=subscriber
-    username: postgres
-    password: postgres
+    url: ${SUBSCRIBER_DB_URL:jdbc:postgresql://localhost:5432/order_system?currentSchema=subscriber}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,10 +14,21 @@ spring:
       hibernate:
         format_sql: true
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 500ms
+          multiplier: 2
+          max-interval: 5s
+          max-attempts: 5
+integrations:
+  internal-api-key: ${INTERNAL_API_KEY:local-development-key}
 logging:
   level:
     com.berke.orders: DEBUG

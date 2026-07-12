@@ -5,11 +5,18 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_DB: order_system
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./database/02_schemas_tables.sql:/docker-entrypoint-initdb.d/02_schemas_tables.sql:ro
+      - ./database/03_seed_data.sql:/docker-entrypoint-initdb.d/03_seed_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -23,5 +30,10 @@ services:
     volumes:
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 volumes:
   pgdata:

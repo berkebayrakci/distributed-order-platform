@@ -1,6 +1,7 @@
 package com.berke.orders.orchestrator.service;
 
 import com.berke.orders.orchestrator.dto.OrchestratorDtos.*;
+import com.berke.orders.orchestrator.config.IntegrationProperties;
 import com.berke.orders.orchestrator.model.CustomerRequestEntity;
 import com.berke.orders.orchestrator.model.ProductOrder;
 import com.berke.orders.orchestrator.repo.CustomerRequestRepository;
@@ -11,7 +12,11 @@ import org.apache.camel.ProducerTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -21,10 +26,9 @@ public class OrchestratorService {
     private final CustomerRequestRepository customerRepo;
     private final SequenceRepository seqRepo;
     private final ProducerTemplate producer;
+    private final IntegrationProperties integrations;
 
-    private final RestClient subscriberClient = RestClient.builder()
-            .baseUrl("http://localhost:8083")
-            .build();
+    private final RestClient subscriberClient = RestClient.builder().build();
 
     @Transactional
     public ProductOrderResponse createOrder(CreateProductOrderRequest req) {
@@ -32,10 +36,10 @@ public class OrchestratorService {
         orderRepo.save(ProductOrder.builder()
                 .orderId(id)
                 .customerId(req.customerId())
-                .crmCallbackUrl(req.callbackUrl())
+                .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/orders/callback")
                 .status("IN_PROGRESS")
                 .build());
-        producer.asyncSendBody("direct:processProductOrder", new ProductOrderEnvelope(id, req));
+        sendAfterCommit("direct:processProductOrder", new ProductOrderEnvelope(id, req));
         return new ProductOrderResponse(id, "IN_PROGRESS");
     }
 
@@ -47,10 +51,10 @@ public class OrchestratorService {
                 .customerId(req.customerId())
                 .firstName(req.firstName())
                 .lastName(req.lastName())
-                .crmCallbackUrl(req.callbackUrl())
+                .crmCallbackUrl(integrations.getCrmBaseUrl() + "/api/customers/callback")
                 .status("IN_PROGRESS")
                 .build());
-        producer.asyncSendBody("direct:processCustomerRequest", new CustomerEnvelope(id, req));
+        sendAfterCommit("direct:processCustomerRequest", new CustomerEnvelope(id, req));
         return new CustomerRequestResponse(id, "IN_PROGRESS");
     }
 
@@ -64,27 +68,28 @@ public class OrchestratorService {
     public CustomerView getCustomer(String customerId) {
         try {
             return subscriberClient.get()
-                    .uri("/api/subscriber/customers/{customerId}", customerId)
+                    .uri(integrations.getSubscriberBaseUrl() + "/api/subscriber/customers/{customerId}", customerId)
+                    .header("X-Internal-Api-Key", integrations.getInternalApiKey())
                     .retrieve()
                     .body(CustomerView.class);
-        } catch (Exception e) {
+        } catch (HttpClientErrorException.NotFound e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found: " + customerId);
+        } catch (RestClientException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Subscriber service is unavailable", e);
         }
     }
 
-    public void forceCompleteOrder(Long id) {
-        var o = orderRepo.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product order not found: " + id));
-        o.setStatus("COMPLETED");
-        orderRepo.save(o);
-    }
-
-    public void abortOrder(Long id, String reason) {
-        var o = orderRepo.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product order not found: " + id));
-        o.setStatus("FAILED");
-        o.setErrorMessage(reason);
-        orderRepo.save(o);
+    private void sendAfterCommit(String endpoint, Object body) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            producer.asyncSendBody(endpoint, body);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                producer.asyncSendBody(endpoint, body);
+            }
+        });
     }
 
     private OperationStatusResponse toProductOperation(ProductOrder order) {
