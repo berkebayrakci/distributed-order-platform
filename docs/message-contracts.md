@@ -17,6 +17,8 @@ All Subscriber command and result messages use envelope version `1`:
 
 Supported event types are `ProductCommand`, `CustomerCommand`, `ProductResult`, and `CustomerResult`. Consumers reject missing fields, unexpected event types, and versions other than `1`; RabbitMQ retry and DLQ rules then apply.
 
+Each `ProductCommand` item includes the resolved Catalog `productVersion`, `validityType`, `validityAmount`, and `validityUnit`. Charging persists this snapshot so later Catalog changes cannot alter an already activated instance's expiry date.
+
 `correlationId` remains stable for the complete HTTP, RabbitMQ, trace-log, and CRM callback flow. Every new message receives a new `eventId`; its `causationId` points to the HTTP request event or RabbitMQ command that directly caused it.
 
 Subscriber command consumers transactionally store `(consumer_name, event_id)` together with their database effects and serialized result envelope. Duplicate commands replay that stored result without repeating provisioning. Orchestration result consumers record the result event in the same transaction as terminal state and callback outbox creation.

@@ -129,11 +129,19 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
                             throw new BusinessFailureException(
                                     "Catalog translation missing for source product code: " + product.sourceProductCode());
                         }
+                        if (!product.productType().equals(mapped.productType())) {
+                            throw new ProtocolFailureException("Requested product type does not match Catalog for code: "
+                                    + product.sourceProductCode());
+                        }
                         return new ProductCommandItem(
                                 product.sourceProductCode(),
                                 mapped.targetProductCode(),
                                 product.sourceItemRef(),
-                                product.productType()
+                                mapped.productType(),
+                                mapped.productVersion(),
+                                mapped.validityType(),
+                                mapped.validityAmount(),
+                                mapped.validityUnit()
                         );
                     }).toList();
 
@@ -333,7 +341,10 @@ public class OrchestrationRoutes extends CategorizedExceptionRouteBuilder {
         for (var product : response.products()) {
             if (product == null
                     || isBlank(product.sourceProductCode())
-                    || isBlank(product.targetProductCode())) {
+                    || isBlank(product.targetProductCode())
+                    || isBlank(product.productType())
+                    || product.productVersion() == null
+                    || isBlank(product.validityType())) {
                 throw new ProtocolFailureException("Catalog lookup response contains an invalid mapping");
             }
         }

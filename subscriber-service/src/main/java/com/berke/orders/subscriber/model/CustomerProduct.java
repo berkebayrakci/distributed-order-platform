@@ -20,6 +20,12 @@ public class CustomerProduct {
     String targetProductCode;
     String targetItemRef;
     String productType;
+    Integer productVersion;
+    String validityType;
+    Integer validityAmount;
+    String validityUnit;
+    Instant activatedAt;
+    Instant expiresAt;
     Boolean active;
     LocalDateTime createdAt;
 

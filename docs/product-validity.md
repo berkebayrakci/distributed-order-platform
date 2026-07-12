@@ -11,4 +11,6 @@ These values are not universal Java rules. A later migration may configure diffe
 
 `FIXED_DURATION` requires a positive amount and a unit (`DAYS`, `MONTHS`, or `YEARS`). `NON_EXPIRING` requires both amount and unit to be null.
 
-This phase does not calculate activation/expiry timestamps and does not expire or remove product instances. Charging remains responsible for applying the configured policy when lifecycle processing is implemented.
+Orchestration copies the resolved product version and validity fields into the product command. Charging applies that snapshot once during activation, stores `activatedAt` and `expiresAt` as UTC instants, and retains the exact version and validity values used. Calendar units use calendar arithmetic (`plusYears`, `plusMonths`, and `plusDays`), including leap-day and month-end adjustment.
+
+Existing product instances are never recalculated from later Catalog values. This phase still does not schedule expiry, transition expired products, or remove product instances.

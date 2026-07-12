@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,7 +27,11 @@ class ProductConsumerTest {
     private final CustomerProductRepository productRepo = mock(CustomerProductRepository.class);
     private final RabbitTemplate rabbit = mock(RabbitTemplate.class);
     private final InboxService inbox = mock(InboxService.class);
-    private final ProductConsumer consumer = new ProductConsumer(customerRepo, productRepo, rabbit, inbox);
+    private final Instant activationTime = Instant.parse("2024-01-31T10:15:30Z");
+    private final ProductLifecycleCalculator lifecycleCalculator =
+            new ProductLifecycleCalculator(Clock.fixed(activationTime, ZoneOffset.UTC));
+    private final ProductConsumer consumer = new ProductConsumer(
+            customerRepo, productRepo, rabbit, inbox, lifecycleCalculator);
 
     @AfterEach
     void clearSynchronization() {
@@ -39,7 +45,7 @@ class ProductConsumerTest {
         when(customerRepo.existsById("customer-1")).thenReturn(true);
         when(productRepo.findByTargetItemRef(anyString())).thenReturn(Optional.empty());
         var command = new ProductCommand(77L, "customer-1", List.of(
-                new ProductCommandItem("A", "TA", "source-1", "ADDON")
+                addonItem()
         ));
         TransactionSynchronizationManager.initSynchronization();
         when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
@@ -54,15 +60,22 @@ class ProductConsumerTest {
         var product = ArgumentCaptor.forClass(CustomerProduct.class);
         verify(productRepo).save(product.capture());
         assertTrue(product.getValue().getTargetItemRef().startsWith("SUBITEM-77-"));
+        assertEquals(1, product.getValue().getProductVersion());
+        assertEquals("FIXED_DURATION", product.getValue().getValidityType());
+        assertEquals(activationTime, product.getValue().getActivatedAt());
+        assertEquals(Instant.parse("2024-04-30T10:15:30Z"), product.getValue().getExpiresAt());
     }
 
     @Test
     void redeliveryReusesPersistedProductInsteadOfProvisioningAgain() {
         var existing = CustomerProduct.builder().customerId("customer-1").targetProductCode("TA")
-                .targetItemRef("placeholder").productType("ADDON").active(true).build();
+                .targetItemRef("placeholder").productType("ADDON").productVersion(1)
+                .validityType("FIXED_DURATION").validityAmount(3).validityUnit("MONTHS")
+                .activatedAt(Instant.parse("2023-01-31T10:15:30Z"))
+                .expiresAt(Instant.parse("2023-04-30T10:15:30Z")).active(true).build();
         when(productRepo.findByTargetItemRef(anyString())).thenReturn(Optional.of(existing));
         var command = new ProductCommand(77L, "customer-1", List.of(
-                new ProductCommandItem("A", "TA", "source-1", "ADDON")
+                addonItem()
         ));
         TransactionSynchronizationManager.initSynchronization();
         when(inbox.begin(anyString(), any(), anyString(), anyInt(), any())).thenReturn(true);
@@ -70,6 +83,7 @@ class ProductConsumerTest {
         consumer.consume(event(command));
 
         verify(productRepo, never()).save(any());
+        assertEquals(Instant.parse("2023-04-30T10:15:30Z"), existing.getExpiresAt());
         TransactionSynchronizationManager.getSynchronizations().getFirst().afterCommit();
         verify(rabbit).convertAndSend(eq("subscriber.product.result.queue"), any(ProductResultEvent.class));
     }
@@ -79,7 +93,7 @@ class ProductConsumerTest {
         UUID eventId = UUID.randomUUID();
         UUID correlationId = UUID.randomUUID();
         var command = new ProductCommand(77L, "customer-1", List.of(
-                new ProductCommandItem("A", "TA", "source-1", "ADDON")));
+                addonItem()));
         var envelope = new ProductCommandEvent(eventId, "ProductCommand", 1, correlationId,
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
         var stored = new ProductResultEvent(UUID.randomUUID(), "ProductResult", 1, correlationId,
@@ -110,5 +124,10 @@ class ProductConsumerTest {
     private ProductCommandEvent event(ProductCommand command) {
         return new ProductCommandEvent(UUID.randomUUID(), "ProductCommand", 1, UUID.randomUUID(),
                 UUID.randomUUID(), "orchestration-service", Instant.now(), command);
+    }
+
+    private ProductCommandItem addonItem() {
+        return new ProductCommandItem("A", "TA", "source-1", "ADDON",
+                1, "FIXED_DURATION", 3, "MONTHS");
     }
 }

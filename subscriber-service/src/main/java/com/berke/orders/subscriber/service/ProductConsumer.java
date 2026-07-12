@@ -25,6 +25,7 @@ public class ProductConsumer {
     private final CustomerProductRepository productRepo;
     private final RabbitTemplate rabbit;
     private final InboxService inbox;
+    private final ProductLifecycleCalculator lifecycleCalculator;
     private static final String CONSUMER = "subscriber-product-command";
 
     @RabbitListener(queues = "subscriber.product.command.queue")
@@ -47,7 +48,20 @@ public class ProductConsumer {
             List<ProductResultItem> result = new ArrayList<>();
             for (var item : cmd.items()) {
                 String targetRef = targetRef(cmd.orderId(), item.sourceItemRef());
-                productRepo.save(CustomerProduct.builder().customerId(cmd.customerId()).targetProductCode(item.targetProductCode()).targetItemRef(targetRef).productType(item.productType()).active(true).build());
+                var lifecycle = lifecycleCalculator.resolve(item);
+                productRepo.save(CustomerProduct.builder()
+                        .customerId(cmd.customerId())
+                        .targetProductCode(item.targetProductCode())
+                        .targetItemRef(targetRef)
+                        .productType(item.productType())
+                        .productVersion(item.productVersion())
+                        .validityType(item.validityType())
+                        .validityAmount(item.validityAmount())
+                        .validityUnit(item.validityUnit())
+                        .activatedAt(lifecycle.activatedAt())
+                        .expiresAt(lifecycle.expiresAt())
+                        .active(true)
+                        .build());
                 result.add(new ProductResultItem(item.sourceProductCode(), item.targetProductCode(), item.sourceItemRef(), targetRef, item.productType()));
             }
             productRepo.flush();

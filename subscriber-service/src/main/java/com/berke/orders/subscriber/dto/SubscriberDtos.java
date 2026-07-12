@@ -12,7 +12,8 @@ public class SubscriberDtos {
     }
 
     public record ProductCommandItem(String sourceProductCode, String targetProductCode, String sourceItemRef,
-                                     String productType) {
+                                     String productType, Integer productVersion, String validityType,
+                                     Integer validityAmount, String validityUnit) {
     }
 
     public record ProductResult(Long orderId, String customerId, boolean success, String errorMessage,

@@ -24,7 +24,10 @@ public class OrchestratorDtos {
     public record ProductLookupRequest(List<String> sourceProductCodes) {
     }
 
-    public record ProductMapItem(String sourceProductCode, String targetProductCode) {
+    public record ProductMapItem(String sourceProductCode, String targetProductCode, String productType,
+                                 Integer productVersion, String validityType, Integer validityAmount,
+                                 String validityUnit, boolean renewable, boolean stackable,
+                                 boolean requiresPrimaryTariff) {
     }
 
     public record ProductLookupResponse(List<ProductMapItem> products) {
@@ -38,7 +41,8 @@ public class OrchestratorDtos {
     }
 
     public record ProductCommandItem(String sourceProductCode, String targetProductCode, String sourceItemRef,
-                                     String productType) {
+                                     String productType, Integer productVersion, String validityType,
+                                     Integer validityAmount, String validityUnit) {
     }
 
     public record ProductResult(Long orderId, String customerId, boolean success, String errorMessage,
